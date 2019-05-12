@@ -6,7 +6,7 @@
 #define DLL_API __declspec(dllimport)
 #endif
 
-#include "..\..\Client\Client\common.h"
+#include "common.h"
 
 extern "C" DLL_API int initializeSharedMemory(HANDLE *hMapFileStoC, HANDLE *hMutexStoC, HANDLE *hSemaphoreSS, HANDLE *hSemaphoreSC,
 											  HANDLE *hMapFileCtoS, HANDLE *hMutexCtoS, HANDLE *hSemaphoreCC, HANDLE *hSemaphoreCS);

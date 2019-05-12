@@ -16,7 +16,7 @@
 #include <process.h>
 #include <malloc.h>
 #include "Auxiliary.h"
-#include "..\..\Client\Client\common.h"
+#include "..\..\DLL\DLL\common.h"
 
 
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
@@ -279,14 +279,17 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_setmode(_fileno(stdin), _O_WTEXT);
 	_setmode(_fileno(stdout), _O_WTEXT);
 #endif
-	HKEY key;
-	DWORD disposition, score;
 	TCHAR command[STRINGBUFFERSIZE];
 	DWORD readMessagesThreadId;
 
-	if (RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\InvadersTop10"), 0, NULL,
-					   REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &key, &disposition) != ERROR_SUCCESS) {
-		_tprintf(TEXT("Erro ao criar/abrir chave (%d)\n"), GetLastError());
+	HKEY hKey;
+	DWORD result;
+	DWORD keyType = REG_BINARY;
+	DWORD bufSize = sizeof(Top10);
+	Top10 top10, testeResultado;
+
+	if (RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\ArkanoidTop10"), 0, NULL,
+		REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &result) != ERROR_SUCCESS) {
 		return -1;
 	}
 
@@ -309,9 +312,13 @@ int _tmain(int argc, LPTSTR argv[]) {
 		}
 		else if (_tcscmp(command, TEXT("top")) == 0) {
 			gameData.score = 115;
-			score = gameData.score;
-			RegSetValueEx(key, TEXT("Name"), 0, REG_SZ, (LPBYTE)TEXT("Ricardo"), _tcslen(TEXT("Ricardo")) * sizeof(TCHAR));
-			RegSetValueEx(key, TEXT("Score"), 0, REG_DWORD, (LPBYTE)&score, sizeof(DWORD));
+			top10.score[0] = gameData.score;
+			gameData.score = 245;
+			top10.score[1] = gameData.score;
+			RegSetValueEx(hKey, TEXT("Top10"), 0, REG_BINARY, (LPBYTE)&top10, sizeof(Top10));
+			RegQueryValueEx(hKey, TEXT("Top10"), 0, &keyType, (LPBYTE)&testeResultado, &bufSize);
+
+			_tprintf(TEXT("%d, %d"), testeResultado.score[0], testeResultado.score[1]);
 		}
 		else if (_tcscmp(command, TEXT("exit")) == 0) {
 			TerminateThread(&readMessagesThreadId, 0);
