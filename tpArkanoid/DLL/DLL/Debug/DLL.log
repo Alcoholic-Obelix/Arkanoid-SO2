@@ -1,6 +1,2 @@
-﻿  stdafx.cpp
-  DLL.cpp
-  dllmain.cpp
-  Generating Code...
-     Creating library C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\DLL\Debug\DLL.lib and object C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\DLL\Debug\DLL.exp
+﻿  DLL.cpp
   DLL.vcxproj -> C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\DLL\Debug\DLL.dll

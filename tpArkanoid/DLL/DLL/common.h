@@ -1,8 +1,21 @@
 #pragma once
 
+#ifdef UNICODE
+#define _tfgets fgetws
+#else
+#define _tfgets fgets
+#de
+#endif
+
+#define CONFIGURATION_FILE TEXT("config.txt")
+//Game State
 #define OFF 0
 #define LOGIN 1
 #define GAME 2
+
+//ClientState
+#define EMPTY 0
+#define LOGGED_IN 0
 
 //GameData
 #define GAMEDATA_FILE_NAME TEXT("gd")
@@ -29,10 +42,31 @@
 #define MAX_WIDTH 60
 #define MAX_HEIGHT 25
 
+typedef struct config {
+	int maxPlayers;
+	int levels;
+	int nLives;
+	int ballSpeed;
+	int nBricks;
+	int powerUpSpeed;
+	int nSpeedUps;
+	int speedUpDuration;
+	int nSlowDowns;
+	int slowDownDuration;
+	int nTriples;
+	int tripleDuration;
+} Config;
+
 typedef struct top10 {
 	TCHAR *name[10];
 	int score[10];
-}Top10;
+} Top10;
+
+typedef struct clientsInfo {
+	int id;
+	TCHAR name[STRINGBUFFERSIZE];
+	int state;
+} ClientsInfo;
 
 typedef struct ball {
 	int x;
@@ -54,6 +88,7 @@ typedef struct gameData {
 	Platform platform;
 } GameData;
 
+//MESSAGES
 typedef struct powerUp {
 	int x;
 	int y;

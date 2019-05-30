@@ -23,6 +23,9 @@ HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
 HANDLE hGameData, hGameDataEvent;
 GameData gameData;
+Config config;
+ClientsInfo *clientsInfo;
+
 
 int inCounter = 0;
 int outCounter = 0;
@@ -132,6 +135,83 @@ int initialization() {
 		return 0;
 	}
 	return 1;
+}
+
+int configSwitch(TCHAR *str, int value) {
+	//"switch case" de strings para comparar no ficheiro config. Se corresponder adiciona o value ao campo correspondente
+	if (_tcscmp(str, TEXT("max_players")) == 0) {
+		config.maxPlayers = value;
+	}
+	else if(_tcscmp(str, TEXT("levels")) == 0) {
+		config.levels = value;
+	}
+	else if (_tcscmp(str, TEXT("lives")) == 0) {
+		config.nLives = value;
+	}
+	else if (_tcscmp(str, TEXT("ball_speed")) == 0) {
+		config.ballSpeed = value;
+	}
+	else if (_tcscmp(str, TEXT("bricks")) == 0) {
+		config.nBricks = value;
+	}
+	else if (_tcscmp(str, TEXT("powerup_speed")) == 0) {
+		config.powerUpSpeed = value;
+	}
+	else if (_tcscmp(str, TEXT("speedups")) == 0) {
+		config.nSpeedUps = value;
+	}
+	else if (_tcscmp(str, TEXT("speed_up_duration")) == 0) {
+		config.speedUpDuration = value;
+	}
+	else if (_tcscmp(str, TEXT("slowdowns")) == 0) {
+		config.nSlowDowns = value;
+	}
+	else if (_tcscmp(str, TEXT("slowdown_duration")) == 0) {
+		config.slowDownDuration = value;
+	}
+	else if (_tcscmp(str, TEXT("triples")) == 0) {
+		config.nTriples = value;
+	}
+	else if (_tcscmp(str, TEXT("triple_duration")) == 0) {
+		config.tripleDuration = value;
+	}
+	else {
+		_tprintf(TEXT("This configuration is not valid: %s\n"), str);
+		return 0;
+	}
+
+	return 1;
+}
+
+int initializeConfig() {
+
+	FILE *f;
+	TCHAR line[STRINGBUFFERSIZE];
+	TCHAR *tokenName, *tokenValue, *nextToken1, *nextToken2;
+	int value;
+
+	_tfopen_s(&f, CONFIGURATION_FILE, TEXT("r"));	//open configuration file
+
+	while (_tfgets(line, STRINGBUFFERSIZE, f) != NULL) {		//reads file line to string 'line'
+		tokenName = _tcstok_s(line, TEXT(" "), &nextToken1);	//gets name "command"
+		tokenValue = _tcstok_s(nextToken1, TEXT("\n"), &nextToken2);	//gets value in string format
+		if (tokenValue[0] != '\n') {
+			value = _ttoi(tokenValue);
+			configSwitch(tokenName, value);
+		}
+
+
+	}
+
+	return 1;
+}
+
+void initializeClientInfo() {
+	clientsInfo = (ClientsInfo*) malloc(config.maxPlayers * sizeof(ClientsInfo));
+
+	for (int i = 0; i < config.maxPlayers; i++)	{
+		clientsInfo[i].state = EMPTY;
+	}
 }
 
 void drawBorders() {
@@ -279,6 +359,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_setmode(_fileno(stdin), _O_WTEXT);
 	_setmode(_fileno(stdout), _O_WTEXT);
 #endif
+
 	TCHAR command[STRINGBUFFERSIZE];
 	DWORD readMessagesThreadId;
 
@@ -287,6 +368,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	DWORD keyType = REG_BINARY;
 	DWORD bufSize = sizeof(Top10);
 	Top10 top10, testeResultado;
+	
 
 	if (RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\ArkanoidTop10"), 0, NULL,
 		REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &result) != ERROR_SUCCESS) {
@@ -297,6 +379,12 @@ int _tmain(int argc, LPTSTR argv[]) {
 		_tprintf(TEXT("Shared Memory error (%d).\n"), GetLastError());
 		return 0;
 	}
+	if (initializeConfig()== 0) {
+		_tprintf(TEXT("Configuration file error\n"));
+		return 0;
+	}
+
+	initializeClientInfo();
 
 	gameData.gameState = LOGIN;
 

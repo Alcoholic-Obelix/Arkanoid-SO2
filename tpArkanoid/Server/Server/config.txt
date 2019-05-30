@@ -1,0 +1,12 @@
+max_players 3
+levels 1
+lives 3
+ball_speed 100
+bricks 20
+powerup_speed 10
+speedups 2
+speed_up_duration 5
+slowdowns 2
+slowdown_duration 2
+triples 1
+triple_duration 5

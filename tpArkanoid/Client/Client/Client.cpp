@@ -18,11 +18,7 @@
 #include "common.h"
 #include "DLL.h"
 
-HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
-HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hGameDataEvent;
-int inCounter = 0;
-int outCounter = 0;
+
 GameData gameData;
 
 void gotoxy(int x, int y) {
@@ -76,32 +72,18 @@ void drawBall(int x, int y, int previousX, int previousY) {
 }
 
 DWORD WINAPI ReadMessages(LPVOID param) {
-	Message *p;
 	Message aux;
 	int previousX = 1, previousY = 1;
 
-	p = (Message*)MapViewOfFile(
-		hMapFileStoC,
-		FILE_MAP_ALL_ACCESS,
-		0,
-		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (p == NULL) {
-		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(p);
-		return 0;
-	}
-
 	while (1) {
-		WaitForSingleObject(hSemaphoreSC, INFINITE);
-		WaitForSingleObject(hMutexStoC, INFINITE);
-		aux = *(p + outCounter);
-		outCounter = (outCounter + 1) % MSGBUFFERSIZE;
-		ReleaseMutex(hMutexStoC);
-		if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
-			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+		if (ReceiveMessage(&aux) == 0) {					//receives message from server through the DLL
+			_tprintf(TEXT("Message couldn't be read \n"));	//and controls the semaphores and mutexes
+			return 0;
 		}
-
+		else {
+			_tprintf(TEXT("Message read \n"));
+		}
+		
 		switch (aux.header) {
 			case 2:
 				if (aux.content.confirmation == true) {
@@ -111,47 +93,12 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 	}
 }
 
-int initialization() {
-	hGameData = OpenFileMapping(
-		FILE_MAP_ALL_ACCESS,
-		FALSE,
-		GAMEDATA_FILE_NAME);
-	if (hGameData == NULL) {
-		_tprintf(TEXT("Error opening file: (%d).\n"), GetLastError());
-		return 0;
-	}
-
-	hGameDataEvent = OpenEvent(
-		EVENT_ALL_ACCESS, 
-		FALSE, 
-		GAMEDATA_EVENT_FILE_NAME);
-	if (hGameDataEvent == NULL) {
-		printf("Open Event failed (%d)\n", GetLastError());
-		return 0;
-	}
-	return 1;
-}
-
 DWORD WINAPI UpdateGameData(LPVOID param) {
-	GameData *p;
-	int previousX = 1, previousY = 1;
-
-	p = (GameData*)MapViewOfFile(
-		hGameData,
-		FILE_MAP_ALL_ACCESS,
-		0,
-		0,
-		sizeof(GameData));
-	if (p == NULL) {
-		_tprintf(TEXT("Map View of File Error: (%d). \n"), GetLastError());
-		CloseHandle(p);
-		return 0;
-	}
+	int previousX = 1, previousY = 1;	
 
 	gameData.gameState = GAME;
 	while (gameData.gameState == GAME) {
-		WaitForSingleObject(hGameDataEvent, INFINITE);
-		gameData = *p;
+		ReceiveBroadcast(&gameData);
 		drawBall(gameData.ball.x, gameData.ball.y, previousX, previousY);
 		previousX = gameData.ball.x;
 		previousY = gameData.ball.y;
@@ -165,32 +112,14 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_setmode(_fileno(stdout), _O_WTEXT);
 #endif
 	DWORD readMessagesThreadId, updateGameDataThreadID;
-	Message *p;
 	Message aux;
-
-	if (initializeSharedMemory(&hMapFileStoC, &hMutexStoC, &hSemaphoreSS, &hSemaphoreSC,
-							   &hMapFileCtoS, &hMutexCtoS, &hSemaphoreCC, &hSemaphoreCS) == 0) {
-		_tprintf(TEXT("Shared Memory error (%d).\n"), GetLastError());
-		return 0;
-	}
-	initialization();
-
-	p = (Message*)MapViewOfFile(
-		hMapFileCtoS,
-		FILE_MAP_ALL_ACCESS,
-		0,
-		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (p == NULL) {
-		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(p);
-		return 0;
-	}
+	
+	InitializeClientConnections();
 
 	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, &readMessagesThreadId);
 	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)UpdateGameData, NULL, 0, &updateGameDataThreadID);
 
-	login(p, &hSemaphoreCC, &hMutexCtoS, &hSemaphoreCS, &inCounter);
+	Login();
 	drawBorders();
 
 
@@ -198,12 +127,10 @@ int _tmain(int argc, LPTSTR argv[]) {
 
 	_gettch();
 	aux.header = 4;
-	sendMessage(aux, p, &hSemaphoreCC, &hMutexCtoS, &hSemaphoreCS, &inCounter);
+	SendMessageToServer(aux);
 	clearScreen();
 	Sleep(500);
 
 	TerminateThread(&readMessagesThreadId, 0);
-	CloseHandle(hMapFileStoC);
-
 }
 
