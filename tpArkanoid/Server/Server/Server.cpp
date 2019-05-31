@@ -25,6 +25,7 @@ HANDLE hGameData, hGameDataEvent;
 GameData gameData;
 Config config;
 ClientsInfo *clientsInfo;
+int nClients;
 
 
 int inCounter = 0;
@@ -279,7 +280,6 @@ void updateGameData() {
 
 	if (!SetEvent(hGameDataEvent)) {
 		printf("SetEvent failed (%d)\n", GetLastError());
-		return;
 	}
 }
 
@@ -291,8 +291,8 @@ DWORD WINAPI BallThread(LPVOID param) {
 	y = 1;
 
 	while (gameData.gameState == GAME) {
-		gameData.ball.x = x;
-		gameData.ball.y = y;
+		gameData.balls[0].x = x;
+		gameData.balls[0].y = y;
 		updateGameData();
 		Sleep(100);
 		x = x + xSpeed;
@@ -307,10 +307,17 @@ DWORD WINAPI BallThread(LPVOID param) {
 	return 0;
 }
 
+int findEmptyClient(){
+	for (int i = 0; i < config.maxPlayers; i++)	{
+		if (clientsInfo[i].state = EMPTY)
+			return i;
+	}
+}
+
 DWORD WINAPI ReadMessages(LPVOID param) {
 	Message *p;
 	Message aux;
-	DWORD ballThreadId;
+	int clientId;
 
 	p = (Message*)MapViewOfFile(
 		hMapFileCtoS,
@@ -334,15 +341,22 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 		}
 
 		switch (aux.header) {
-			case 1 :
-				_tcscpy_s(gameData.userName, _countof(gameData.userName), aux.content.userName);
-				gameData.gameState = GAME;
-				aux.header = 2;
-				aux.content.confirmation = true;
+			case 1 :	//LOGIN
+				if (nClients < config.maxPlayers) {	// IF HAS PLAYER SPACE
+					clientId = findEmptyClient();
+					_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[0].name), aux.content.userName);
+					_tcscpy_s(gameData.players[clientId].userName, _countof(clientsInfo[0].name), aux.content.userName);
+					aux.header = 2;
+					aux.content.confirmation = true;
+					sendMessage(aux, &inCounter);
+					updateGameData();
+				}
+				else {
+					aux.header = 2;
+					aux.content.confirmation = false;
+				}
 				sendMessage(aux, &inCounter);
-				_tprintf(TEXT("%s is logged in. The game will start soon.\n"), gameData.userName);
-				Sleep(1000);
-				CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, &ballThreadId);
+				_tprintf(TEXT("%s is logged in. The game will start soon.\n"), clientsInfo[clientId].name);				
 				break;
 			case 4:
 				gameData.gameState = 4;
@@ -362,6 +376,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 
 	TCHAR command[STRINGBUFFERSIZE];
 	DWORD readMessagesThreadId;
+	DWORD ballThreadId;
 
 	HKEY hKey;
 	DWORD result;
@@ -386,6 +401,10 @@ int _tmain(int argc, LPTSTR argv[]) {
 
 	initializeClientInfo();
 
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, &readMessagesThreadId);
+	_tprintf(TEXT("Server Ready\n"));
+
+	nClients = 0;
 	gameData.gameState = LOGIN;
 
 	while (gameData.gameState != OFF) {
@@ -395,14 +414,14 @@ int _tmain(int argc, LPTSTR argv[]) {
 		//_tprintf(command);
 
 		if (_tcscmp(command, TEXT("start")) == 0) {
-			CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, &readMessagesThreadId);
-			_tprintf(TEXT("Server Ready\n"));
+			gameData.gameState = GAME;
+			CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, &ballThreadId);
 		}
 		else if (_tcscmp(command, TEXT("top")) == 0) {
-			gameData.score = 115;
+			/*gameData.score = 115;
 			top10.score[0] = gameData.score;
 			gameData.score = 245;
-			top10.score[1] = gameData.score;
+			top10.score[1] = gameData.score;*/
 			RegSetValueEx(hKey, TEXT("Top10"), 0, REG_BINARY, (LPBYTE)&top10, sizeof(Top10));
 			RegQueryValueEx(hKey, TEXT("Top10"), 0, &keyType, (LPBYTE)&testeResultado, &bufSize);
 

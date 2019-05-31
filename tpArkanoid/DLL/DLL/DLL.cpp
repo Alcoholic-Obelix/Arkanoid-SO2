@@ -167,6 +167,7 @@ int ReceiveMessage(Message* aux) {
 int ReceiveBroadcast(GameData *gameData) {
 	WaitForSingleObject(hGameDataEvent, INFINITE);
 	*gameData = *pGameData;
+	ResetEvent(hGameDataEvent);
 
 	return 1;
 }

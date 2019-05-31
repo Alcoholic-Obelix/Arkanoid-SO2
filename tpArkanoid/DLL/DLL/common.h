@@ -68,6 +68,7 @@ typedef struct clientsInfo {
 	int state;
 } ClientsInfo;
 
+///////////////GAMEDATA
 typedef struct ball {
 	int x;
 	int y;
@@ -80,12 +81,17 @@ typedef struct platform {
 	char mode;
 } Platform;
 
+typedef struct player {
+	int id;
+	TCHAR userName[STRINGBUFFERSIZE];
+	Platform platform;
+	int score;
+}Player;
+
 typedef struct gameData {
 	int gameState;
-	TCHAR userName[STRINGBUFFERSIZE];
-	Ball ball;
-	int score;
-	Platform platform;
+	Player players[20];
+	Ball balls[3];
 } GameData;
 
 //MESSAGES

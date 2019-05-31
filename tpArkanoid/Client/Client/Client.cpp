@@ -20,6 +20,7 @@
 
 
 GameData gameData;
+int myId;
 
 void gotoxy(int x, int y) {
 	static HANDLE hStdout = NULL;
@@ -96,12 +97,11 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 DWORD WINAPI UpdateGameData(LPVOID param) {
 	int previousX = 1, previousY = 1;	
 
-	gameData.gameState = GAME;
-	while (gameData.gameState == GAME) {
+	while (1) {
 		ReceiveBroadcast(&gameData);
-		drawBall(gameData.ball.x, gameData.ball.y, previousX, previousY);
-		previousX = gameData.ball.x;
-		previousY = gameData.ball.y;
+		drawBall(gameData.balls[0].x, gameData.balls[0].y, previousX, previousY);
+		previousX = gameData.balls[0].x;
+		previousY = gameData.balls[0].y;
 	}
 	return 1;
 }
