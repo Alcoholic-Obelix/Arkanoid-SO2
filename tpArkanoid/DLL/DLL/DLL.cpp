@@ -9,13 +9,13 @@ HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
 HANDLE hGameData, hMutexGameData, hGameDataEvent;
 
-Message *pMessageStoC;
-Message *pMessageCtoS; 
+Buffer *pBufferStoC;
+Buffer *pBufferCtoS;
 GameData *pGameData;
 
 Message aux;
-int inCounter = 0;
-int outCounter = 0;
+int myId = -1;
+
 
 int InitializeClientConnections() {
 	/////////////////////SERVER TO CLIENT
@@ -28,15 +28,15 @@ int InitializeClientConnections() {
 		return 0;
 	}
 
-	pMessageStoC = (Message*)MapViewOfFile(
+	pBufferStoC = (Buffer*)MapViewOfFile(
 		hMapFileStoC,
 		FILE_MAP_ALL_ACCESS,
 		0,
 		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (pMessageStoC == NULL) {
+		sizeof(Buffer));
+	if (pBufferStoC == NULL) {
 		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(pMessageStoC);
+		CloseHandle(pBufferStoC);
 		return 0;
 	}
 
@@ -69,15 +69,15 @@ int InitializeClientConnections() {
 		return 0;
 	}
 
-	pMessageCtoS = (Message*)MapViewOfFile(
+	pBufferCtoS = (Buffer*)MapViewOfFile(
 		hMapFileCtoS,
 		FILE_MAP_ALL_ACCESS,
 		0,
 		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (pMessageCtoS == NULL) {
+		sizeof(Buffer));
+	if (pBufferCtoS == NULL) {
 		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(pMessageCtoS);
+		CloseHandle(pBufferCtoS);
 		return 0;
 	}
 
@@ -141,19 +141,43 @@ int InitializeClientConnections() {
 	return 1;
 }
 
-void Login(TCHAR *name) {
+int Login(TCHAR *name) {
 	Message aux;
 
 	aux.header = 1; //Login
 	_tcscpy_s(aux.content.userName, _countof(aux.content.userName), name);
 	SendMessageToServer(aux);
+
+	WaitForSingleObject(hSemaphoreSC, INFINITE);
+	WaitForSingleObject(hMutexStoC, INFINITE);
+	if (_tcscmp(pBufferStoC->message[pBufferStoC->out].content.userName, name) == 0) {
+		myId = pBufferStoC->message[pBufferStoC->out].id;
+		pBufferStoC->out = (pBufferStoC->out + 1) % MSGBUFFERSIZE;
+		ReleaseMutex(hMutexStoC);
+		if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
+			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+			return 0;
+		}
+		_tprintf(TEXT("%d\n"), myId);
+		return 1;
+	}
+	else {
+		ReleaseMutex(hMutexStoC);
+		if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
+			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+			return 0;
+		}
+		return 0;
+	}
+
 }
 
 int SendMessageToServer(Message content) {
 	WaitForSingleObject(hSemaphoreCC, INFINITE);
 	WaitForSingleObject(hMutexCtoS, INFINITE);
-	*(pMessageCtoS + inCounter) = content;
-	inCounter = (inCounter + 1) % MSGBUFFERSIZE;
+	content.id = myId;
+	pBufferCtoS->message[pBufferCtoS->in] = content;
+	pBufferCtoS->in = (pBufferCtoS->in + 1) % MSGBUFFERSIZE;
 	ReleaseMutex(hMutexCtoS);
 	if (!ReleaseSemaphore(hSemaphoreCS, 1, NULL)) {
 		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
@@ -166,13 +190,21 @@ int ReceiveMessage(Message* aux) {
 	WaitForSingleObject(hSemaphoreSC, INFINITE);
 	WaitForSingleObject(hMutexStoC, INFINITE);
 
-	*aux = *(pMessageStoC + outCounter);
-	outCounter = (outCounter + 1) % MSGBUFFERSIZE;
-
-	ReleaseMutex(hMutexStoC);
-	if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
-		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
-		return 0;
+	if (pBufferStoC->message[pBufferStoC->out].id == myId) {
+		*aux = pBufferStoC->message[pBufferStoC->out];
+		pBufferStoC->out = (pBufferStoC->out + 1) % MSGBUFFERSIZE;
+		ReleaseMutex(hMutexStoC);
+		if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
+			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+			return 0;
+		}
+	}
+	else {
+		ReleaseMutex(hMutexStoC);
+		if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
+			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+			return 0;
+		}
 	}
 
 	return 1;
@@ -180,9 +212,9 @@ int ReceiveMessage(Message* aux) {
 
 int ReceiveBroadcast(GameData *gameData) {
 	WaitForSingleObject(hGameDataEvent, INFINITE);
-	//WaitForSingleObject(hMutexGameData, INFINITE);
+	WaitForSingleObject(hMutexGameData, INFINITE);
 	*gameData = *pGameData;
-	//ReleaseMutex(hMutexGameData);
+	ReleaseMutex(hMutexGameData);
 	ResetEvent(hGameDataEvent);
 
 	return 1;

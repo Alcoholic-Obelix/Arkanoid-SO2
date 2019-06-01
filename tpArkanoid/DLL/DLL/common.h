@@ -17,6 +17,10 @@
 #define EMPTY 0
 #define LOGGED_IN 1
 
+//OtherConfs
+#define LOGIN_RECEIVE_TRIALS 5
+#define LOGIN_WAIT_TIME 2000
+
 //GameData
 #define GAMEDATA_FILE_NAME TEXT("gd")
 #define GAMEDATA_EVENT_FILE_NAME TEXT("evgd")
@@ -113,4 +117,8 @@ typedef struct message {
 	Content content;
 }Message;
 
-
+typedef struct buffer {
+	Message message[MSGBUFFERSIZE];
+	int in;
+	int out;
+}Buffer;

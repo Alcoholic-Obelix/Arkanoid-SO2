@@ -24,8 +24,8 @@ HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
 HANDLE hGameData, hMutexGameData, hGameDataEvent;
 
 //FILEMAPPING POINTERS
-Message *pMessageStoC;
-Message *pMessageCtoS;
+Buffer *pBufferStoC;
+Buffer *pBufferCtoS;
 GameData *pGameData;
 
 //GAME VARIABLES
@@ -33,10 +33,6 @@ GameData gameData;
 Config config;
 ClientsInfo clientsInfo[20];
 int nClients;
-
-
-int inCounter = 0;
-int outCounter = 0;
 
 int initialization() {
 	//Game Data
@@ -93,16 +89,20 @@ int initialization() {
 		return 0;
 	}
 
-	pMessageStoC = (Message*)MapViewOfFile(
+	pBufferStoC = (Buffer*)MapViewOfFile(
 		hMapFileStoC,
 		FILE_MAP_ALL_ACCESS,
 		0,
 		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (pMessageStoC == NULL) {
+		sizeof(Buffer));
+	if (pBufferStoC == NULL) {
 		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(pMessageStoC);
+		CloseHandle(pBufferStoC);
+		return 0;
 	}
+
+	pBufferStoC->in = 0;
+	pBufferStoC->out = 0;
 
 	hMutexStoC = CreateMutex(NULL, FALSE, MUTEX_NAME_SC);
 	if (hMutexStoC == NULL) {
@@ -143,16 +143,20 @@ int initialization() {
 		return 0;
 	}
 
-	pMessageCtoS = (Message*)MapViewOfFile(
+	pBufferCtoS = (Buffer*)MapViewOfFile(
 		hMapFileCtoS,
 		FILE_MAP_ALL_ACCESS,
 		0,
 		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (pMessageCtoS == NULL) {
+		sizeof(Buffer));
+	if (pBufferCtoS == NULL) {
 		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(pMessageStoC);
+		CloseHandle(pBufferCtoS);
+		return 0;
 	}
+
+	pBufferCtoS->in = 0;
+	pBufferCtoS->out = 0;
 
 	hMutexCtoS = CreateMutex(NULL, FALSE, MUTEX_NAME_CS);
 	if (hMutexCtoS == NULL) {
@@ -287,11 +291,12 @@ void drawBorders() {
 	}
 }
 
-void sendMessage(Message content, int* inCounter) {
+void sendMessage(Message content) {
 	WaitForSingleObject(hSemaphoreSS, INFINITE);
 	WaitForSingleObject(hMutexStoC, INFINITE);
-	*(pMessageStoC + *inCounter) = content;
-	*inCounter = ((*inCounter) + 1) % MSGBUFFERSIZE;
+	pBufferStoC->message[pBufferStoC->in] = content;
+	//*(pMessageStoC + *inCounter) = content;
+	pBufferStoC->in = ((pBufferStoC->in) + 1) % MSGBUFFERSIZE;
 	ReleaseMutex(hMutexStoC);
 	if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
 		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
@@ -305,8 +310,9 @@ int ExitReadingThread() {
 
 	WaitForSingleObject(hSemaphoreCC, INFINITE);
 	WaitForSingleObject(hMutexCtoS, INFINITE);
-	*(pMessageCtoS + inCounter) = exitMessage;
-	inCounter = (inCounter + 1) % MSGBUFFERSIZE;
+	pBufferCtoS->message[pBufferCtoS->in] = exitMessage;
+	//*(pMessageCtoS + inCounter) = exitMessage;
+	pBufferCtoS->in = (pBufferCtoS->in + 1) % MSGBUFFERSIZE;
 	ReleaseMutex(hMutexCtoS);
 	if (!ReleaseSemaphore(hSemaphoreCS, 1, NULL)) {
 		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
@@ -323,6 +329,14 @@ void updateGameData() {
 	if (!SetEvent(hGameDataEvent)) {
 		printf("SetEvent failed (%d)\n", GetLastError());
 	}
+}
+
+int findEmptyClient(){
+	for (int i = 0; i < config.maxPlayers; i++)	{
+		if (clientsInfo[i].state == EMPTY)
+			return i;
+	}
+	return -1;
 }
 
 DWORD WINAPI BallThread(LPVOID param) {
@@ -350,14 +364,6 @@ DWORD WINAPI BallThread(LPVOID param) {
 	return 0;
 }
 
-int findEmptyClient(){
-	for (int i = 0; i < config.maxPlayers; i++)	{
-		if (clientsInfo[i].state == EMPTY)
-			return i;
-	}
-	return -1;
-}
-
 DWORD WINAPI ReadMessages(LPVOID param) {
 	Message aux;
 	int clientId;
@@ -365,8 +371,8 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 	while (gameData.gameState != OFF) {
 		WaitForSingleObject(hSemaphoreCS, INFINITE);
 		WaitForSingleObject(hMutexCtoS, INFINITE);
-		aux = *(pMessageCtoS + outCounter);
-		outCounter = (outCounter + 1) % MSGBUFFERSIZE;
+		aux = pBufferCtoS->message[pBufferCtoS->out];
+		pBufferCtoS->out = (pBufferCtoS->out + 1) % MSGBUFFERSIZE;
 		ReleaseMutex(hMutexCtoS);
 		if (!ReleaseSemaphore(hSemaphoreCC, 1, NULL)) {
 			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
@@ -383,16 +389,16 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 					clientsInfo[clientId].state = LOGGED_IN;
 					aux.id = clientId;
 					aux.header = 2;
-					sendMessage(aux, &inCounter);
+					sendMessage(aux);
 					gameData.players[clientId].id = clientId;
 					updateGameData();
+					_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
 				}
 				else {
 					aux.header = 2;
 					aux.content.confirmation = false;
 				}
-				sendMessage(aux, &inCounter);
-				_tprintf(TEXT("%s is logged in. The game will start soon.\n"), clientsInfo[clientId].name);				
+				sendMessage(aux);
 				break;
 			case 4:
 				gameData.gameState = 4;
@@ -438,10 +444,13 @@ int _tmain(int argc, LPTSTR argv[]) {
 	initializeClientInfo();
 
 	nClients = 0;
-	gameData.gameState = LOGIN;
 
+	gameData.gameState = LOGIN;
 	hReadMessagesThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, NULL);
-	_tprintf(TEXT("Server Ready\n"));	
+	_tprintf(TEXT("Server Ready\n"));
+	_gettch();
+	gameData.gameState = GAME;
+	hBallThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, NULL);
 
 	while (gameData.gameState != OFF) {
 		fflush(stdin);
@@ -451,7 +460,6 @@ int _tmain(int argc, LPTSTR argv[]) {
 
 		if (_tcscmp(command, TEXT("start")) == 0) {
 			gameData.gameState = GAME;
-			hBallThread =  CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, NULL);
 		}
 		else if (_tcscmp(command, TEXT("top")) == 0) {
 			/*gameData.score = 115;
@@ -468,6 +476,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 			gameData.gameState = OFF;
 			ExitReadingThread();
 			WaitForSingleObject(hReadMessagesThread, INFINITE);
+			WaitForSingleObject(hBallThread, 1000);
 		}
 	}
 }

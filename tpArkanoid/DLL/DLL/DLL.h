@@ -10,7 +10,7 @@
 
 extern "C" DLL_API int InitializeClientConnections();
 
-extern "C" DLL_API void Login(TCHAR *name);
+extern "C" DLL_API int Login(TCHAR *name);
 
 extern "C" DLL_API int SendMessageToServer(Message content);
 
