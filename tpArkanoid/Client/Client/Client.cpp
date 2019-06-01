@@ -21,6 +21,7 @@
 
 GameData gameData;
 int myId;
+TCHAR myName[STRINGBUFFERSIZE];
 
 void gotoxy(int x, int y) {
 	static HANDLE hStdout = NULL;
@@ -72,11 +73,19 @@ void drawBall(int x, int y, int previousX, int previousY) {
 		_tprintf(TEXT("O"));
 }
 
+void askForLogin() {
+	_tprintf(TEXT("Username --> "));
+	fflush(stdin);
+	_fgetts(myName, STRINGBUFFERSIZE, stdin);
+	myName[_tcslen(myName) - 1] = '\0';
+	Login(myName);
+}
+
 DWORD WINAPI ReadMessages(LPVOID param) {
 	Message aux;
 	int previousX = 1, previousY = 1;
 
-	while (1) {
+	while (gameData.gameState != OFF) {
 		if (ReceiveMessage(&aux) == 0) {					//receives message from server through the DLL
 			_tprintf(TEXT("Message couldn't be read \n"));	//and controls the semaphores and mutexes
 			return 0;
@@ -86,9 +95,9 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 		}
 		
 		switch (aux.header) {
-			case 2:
-				if (aux.content.confirmation == true) {
-					drawBorders();
+			case 1:
+				if (_tcscmp(myName, aux.content.userName) == 0) {
+					myId = aux.id;
 				}
 		}
 	}
@@ -97,7 +106,7 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 DWORD WINAPI UpdateGameData(LPVOID param) {
 	int previousX = 1, previousY = 1;	
 
-	while (1) {
+	while (gameData.gameState != OFF) {
 		ReceiveBroadcast(&gameData);
 		drawBall(gameData.balls[0].x, gameData.balls[0].y, previousX, previousY);
 		previousX = gameData.balls[0].x;
@@ -111,17 +120,19 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_setmode(_fileno(stdin), _O_WTEXT);
 	_setmode(_fileno(stdout), _O_WTEXT);
 #endif
-	DWORD readMessagesThreadId, updateGameDataThreadID;
+	HANDLE hReadMessagesThread, hUpdateGameDataThread;
 	Message aux;
 	
 	InitializeClientConnections();
 
-	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, &readMessagesThreadId);
-	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)UpdateGameData, NULL, 0, &updateGameDataThreadID);
+	gameData.gameState = GAME;
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, NULL);
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)UpdateGameData, NULL, 0, NULL);
 
-	Login();
+
+	askForLogin();
+	//Sleep(1000);
 	drawBorders();
-
 
 
 
@@ -130,7 +141,5 @@ int _tmain(int argc, LPTSTR argv[]) {
 	SendMessageToServer(aux);
 	clearScreen();
 	Sleep(500);
-
-	TerminateThread(&readMessagesThreadId, 0);
 }
 

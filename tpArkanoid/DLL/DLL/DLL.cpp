@@ -7,8 +7,10 @@
 
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hGameDataEvent;
-Message *pMessage;
+HANDLE hGameData, hMutexGameData, hGameDataEvent;
+
+Message *pMessageStoC;
+Message *pMessageCtoS; 
 GameData *pGameData;
 
 Message aux;
@@ -26,11 +28,24 @@ int InitializeClientConnections() {
 		return 0;
 	}
 
-	hMutexStoC = CreateMutex(NULL, FALSE, MUTEX_NAME_SC);
-	if (hMutexStoC == NULL) {
-		_tprintf(TEXT("Mutex Error (%d).\n"), GetLastError());
+	pMessageStoC = (Message*)MapViewOfFile(
+		hMapFileStoC,
+		FILE_MAP_ALL_ACCESS,
+		0,
+		0,
+		MSGBUFFERSIZE * sizeof(Message));
+	if (pMessageStoC == NULL) {
+		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
+		CloseHandle(pMessageStoC);
 		return 0;
 	}
+
+	hMutexStoC = OpenMutex(SYNCHRONIZE, false, MUTEX_NAME_SC);
+	if (hMutexStoC == NULL) {
+		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
+		return 0;
+	}
+
 
 	hSemaphoreSS = OpenSemaphore(SEMAPHORE_ALL_ACCESS, FALSE, SEMAPHORE_NAME_SS);
 	if (hSemaphoreSS == NULL) {
@@ -54,9 +69,21 @@ int InitializeClientConnections() {
 		return 0;
 	}
 
-	hMutexCtoS = CreateMutex(NULL, FALSE, MUTEX_NAME_CS);
-	if (hMutexStoC == NULL) {
-		_tprintf(TEXT("Mutex Error (%d).\n"), GetLastError());
+	pMessageCtoS = (Message*)MapViewOfFile(
+		hMapFileCtoS,
+		FILE_MAP_ALL_ACCESS,
+		0,
+		0,
+		MSGBUFFERSIZE * sizeof(Message));
+	if (pMessageCtoS == NULL) {
+		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
+		CloseHandle(pMessageCtoS);
+		return 0;
+	}
+
+	hMutexCtoS = OpenMutex(SYNCHRONIZE, false, MUTEX_NAME_CS);
+	if (hMutexCtoS == NULL) {
+		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
 		return 0;
 	}
 
@@ -71,18 +98,6 @@ int InitializeClientConnections() {
 		_tprintf(TEXT("Server Semaphore Error (%d).\n"), GetLastError());
 		return 0;
 	}
-	/////////MAPPING MESSAGE
-	pMessage = (Message*)MapViewOfFile(
-		hMapFileCtoS,
-		FILE_MAP_ALL_ACCESS,
-		0,
-		0,
-		MSGBUFFERSIZE * sizeof(Message));
-	if (pMessage == NULL) {
-		_tprintf(TEXT("Share Memory View Error (%d). \n"), GetLastError());
-		CloseHandle(pMessage);
-		return 0;
-	}
 
 	///////////////////GAMEDATA
 	hGameData = OpenFileMapping(
@@ -91,6 +106,12 @@ int InitializeClientConnections() {
 		GAMEDATA_FILE_NAME);
 	if (hGameData == NULL) {
 		_tprintf(TEXT("Error opening file: (%d).\n"), GetLastError());
+		return 0;
+	}
+
+	hMutexGameData = OpenMutex(SYNCHRONIZE, false, MUTEX_NAME_GAMEDATA);
+	if (hMutexGameData == NULL) {
+		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
 		return 0;
 	}
 
@@ -120,25 +141,18 @@ int InitializeClientConnections() {
 	return 1;
 }
 
-void Login() {
+void Login(TCHAR *name) {
 	Message aux;
-	TCHAR name[STRINGBUFFERSIZE];
 
-	_tprintf(TEXT("Username --> "));
-	fflush(stdin);
-	_fgetts(name, STRINGBUFFERSIZE, stdin);
-	name[_tcslen(name) - 1] = '\0';
-
-	aux.header = 1;
+	aux.header = 1; //Login
 	_tcscpy_s(aux.content.userName, _countof(aux.content.userName), name);
 	SendMessageToServer(aux);
 }
 
 int SendMessageToServer(Message content) {
-
 	WaitForSingleObject(hSemaphoreCC, INFINITE);
 	WaitForSingleObject(hMutexCtoS, INFINITE);
-	*(pMessage + inCounter) = content;
+	*(pMessageCtoS + inCounter) = content;
 	inCounter = (inCounter + 1) % MSGBUFFERSIZE;
 	ReleaseMutex(hMutexCtoS);
 	if (!ReleaseSemaphore(hSemaphoreCS, 1, NULL)) {
@@ -152,7 +166,7 @@ int ReceiveMessage(Message* aux) {
 	WaitForSingleObject(hSemaphoreSC, INFINITE);
 	WaitForSingleObject(hMutexStoC, INFINITE);
 
-	*aux = *(pMessage + outCounter);
+	*aux = *(pMessageStoC + outCounter);
 	outCounter = (outCounter + 1) % MSGBUFFERSIZE;
 
 	ReleaseMutex(hMutexStoC);
@@ -166,7 +180,9 @@ int ReceiveMessage(Message* aux) {
 
 int ReceiveBroadcast(GameData *gameData) {
 	WaitForSingleObject(hGameDataEvent, INFINITE);
+	//WaitForSingleObject(hMutexGameData, INFINITE);
 	*gameData = *pGameData;
+	//ReleaseMutex(hMutexGameData);
 	ResetEvent(hGameDataEvent);
 
 	return 1;

@@ -15,24 +15,24 @@
 
 //ClientState
 #define EMPTY 0
-#define LOGGED_IN 0
+#define LOGGED_IN 1
 
 //GameData
 #define GAMEDATA_FILE_NAME TEXT("gd")
 #define GAMEDATA_EVENT_FILE_NAME TEXT("evgd")
+#define MUTEX_NAME_GAMEDATA TEXT("mtgd")
+
 //Server to Client
 #define MAPPED_FILE_NAME_SC TEXT("FMSC")
 #define SEMAPHORE_NAME_SC TEXT("ssc")
 #define SEMAPHORE_NAME_CC TEXT("scc")
 #define MUTEX_NAME_SC TEXT("mtsc")
-#define MUTEX_NAME_CC TEXT("mtcc")
 
 //Client to Server
 #define MAPPED_FILE_NAME_CS TEXT("FMCS")
 #define SEMAPHORE_NAME_CS TEXT("scs")
 #define SEMAPHORE_NAME_SS TEXT("sss")
 #define MUTEX_NAME_CS TEXT("mtcs")
-#define MUTEX_NAME_SS TEXT("mtss")
 
 #define STRINGBUFFERSIZE 64
 #define MSGBUFFERSIZE 10
@@ -83,7 +83,6 @@ typedef struct platform {
 
 typedef struct player {
 	int id;
-	TCHAR userName[STRINGBUFFERSIZE];
 	Platform platform;
 	int score;
 }Player;
@@ -101,7 +100,7 @@ typedef struct powerUp {
 	char mode;
 } PowerUp;
 
-typedef union messageContent {
+typedef union messageContent {			//0 Server to server for shutdown
 	TCHAR userName[STRINGBUFFERSIZE];	//1
 	bool confirmation;					//2
 	PowerUp powerUp;					//3
@@ -109,6 +108,7 @@ typedef union messageContent {
 } Content;
 
 typedef struct message {
+	int id;
 	int header;
 	Content content;
 }Message;
