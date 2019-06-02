@@ -8,16 +8,18 @@
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
 HANDLE hGameData, hMutexGameData, hGameDataEvent;
-
 Buffer *pBufferStoC;
 Buffer *pBufferCtoS;
+
+HANDLE hPipe;
+
 GameData *pGameData;
 
 Message aux;
 int myId = -1;
 
 
-int InitializeClientConnections() {
+int LocalInitializeClientConnections() {
 	/////////////////////SERVER TO CLIENT
 	hMapFileStoC = OpenFileMapping(
 		FILE_MAP_ALL_ACCESS,
@@ -141,7 +143,7 @@ int InitializeClientConnections() {
 	return 1;
 }
 
-int Login(TCHAR *name) {
+int LocalLogin(TCHAR *name) {
 	Message aux;
 
 	aux.header = 1; //Login
@@ -172,7 +174,7 @@ int Login(TCHAR *name) {
 
 }
 
-int SendMessageToServer(Message content) {
+int LocalSendMessageToServer(Message content) {
 	WaitForSingleObject(hSemaphoreCC, INFINITE);
 	WaitForSingleObject(hMutexCtoS, INFINITE);
 	content.id = myId;
@@ -186,7 +188,7 @@ int SendMessageToServer(Message content) {
 	return 1;
 }
 
-int ReceiveMessage(Message* aux) {
+int LocalReceiveMessage(Message *aux) {
 	WaitForSingleObject(hSemaphoreSC, INFINITE);
 	WaitForSingleObject(hMutexStoC, INFINITE);
 
@@ -210,7 +212,7 @@ int ReceiveMessage(Message* aux) {
 	return 1;
 }
 
-int ReceiveBroadcast(GameData *gameData) {
+int LocalReceiveBroadcast(GameData *gameData) {
 	WaitForSingleObject(hGameDataEvent, INFINITE);
 	WaitForSingleObject(hMutexGameData, INFINITE);
 	*gameData = *pGameData;
@@ -218,4 +220,56 @@ int ReceiveBroadcast(GameData *gameData) {
 	ResetEvent(hGameDataEvent);
 
 	return 1;
+}
+
+int PipeInitialize() {
+	LPCTSTR pipeName = PIPE_NAME;
+	DWORD mode;
+	BOOL  fSuccess;
+
+	for (int i = 0; i < MAX_CONECTION_TRIES; i++) {
+		hPipe = CreateFile(
+			pipeName,
+			GENERIC_READ | GENERIC_WRITE,
+			0,
+			NULL,
+			OPEN_EXISTING,
+			0,
+			NULL);
+
+		if (hPipe != INVALID_HANDLE_VALUE)
+			break;
+
+		if (GetLastError() != ERROR_PIPE_BUSY) {
+			_tprintf(TEXT("Can't open pipe. Error: %d. Tries: %d"), GetLastError(), i);
+			return -1;
+		}
+	}
+
+	mode = PIPE_READMODE_MESSAGE;
+	fSuccess = SetNamedPipeHandleState(
+		hPipe,
+		&mode,
+		NULL,
+		NULL);
+	if (!fSuccess) {
+		_tprintf(TEXT("SetNamedPipe Error: %d."), GetLastError());
+		return -1;
+	}	
+	return 1;
+}
+
+int PipeReceiveMessage(Message *aux) {
+	BOOL fSuccess;
+	DWORD bytesRead = 0;
+
+	fSuccess = ReadFile(
+		hPipe,
+		aux,
+		sizeof(Message),
+		&bytesRead,
+		NULL);
+
+	if (!fSuccess && GetLastError() != ERROR_MORE_DATA)
+		return -1;
 }

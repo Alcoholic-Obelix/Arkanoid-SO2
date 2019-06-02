@@ -23,6 +23,7 @@ HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
 HANDLE hGameData, hMutexGameData, hGameDataEvent;
 
+
 //FILEMAPPING POINTERS
 Buffer *pBufferStoC;
 Buffer *pBufferCtoS;
@@ -34,7 +35,7 @@ Config config;
 ClientsInfo clientsInfo[20];
 int nClients;
 
-int initialization() {
+int initializeLocalMemory() {
 	//Game Data
 	hGameData = CreateFileMapping(
 		INVALID_HANDLE_VALUE,
@@ -186,6 +187,7 @@ int initialization() {
 	}
 	return 1;
 }
+
 
 int configSwitch(TCHAR *str, int value) {
 	//"switch case" de strings para comparar no ficheiro config. Se corresponder adiciona o value ao campo correspondente
@@ -339,6 +341,23 @@ int findEmptyClient(){
 	return -1;
 }
 
+void sendPipedMessage(int clientId, Message aux) {
+	HANDLE hPipe = clientsInfo[clientId].hPipe;
+	BOOL fSuccess = FALSE;
+	DWORD bytesWritten = 0;
+
+	fSuccess = WriteFile(
+			hPipe,
+			&aux,
+			sizeof(Message),
+			&bytesWritten,
+			NULL);
+
+		if (!fSuccess || bytesWritten != sizeof(Message)) {
+			_tprintf(TEXT("WriteFile failed. Error: %d\n"), GetLastError());
+		}
+}
+
 DWORD WINAPI BallThread(LPVOID param) {
 	int x, y, xSpeed, ySpeed;
 	xSpeed = 1;
@@ -410,6 +429,117 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 	return 0;
 }
 
+DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
+	Message aux;
+	int clientId;
+
+	DWORD bytesRead = 0, replyBytes = 0;
+	BOOL fSuccess = FALSE;
+	HANDLE hPipe = NULL;
+
+	if (param == NULL) {
+		_tprintf(TEXT("Error. No param value.\n"));
+		return (DWORD)-1;
+	}
+
+	hPipe = (HANDLE)param;
+	clientId = findEmptyClient();
+	if (clientId == -1) {
+		_tprintf(TEXT("Clients are full.\n"));
+	}
+	clientsInfo[clientId].hPipe = hPipe;
+
+	while (gameData.gameState != OFF) {
+		fSuccess = ReadFile(
+			hPipe,
+			&aux,
+			sizeof(Message),
+			&bytesRead,
+			NULL);
+
+		if (!fSuccess || bytesRead == 0) {
+			if (GetLastError() == ERROR_BROKEN_PIPE) 
+				_tprintf(TEXT("Client is off. Error: %d\n"), GetLastError());
+			else
+				_tprintf(TEXT("ReadFile failed. Error: %d\n"), GetLastError());
+			break;
+		}
+
+		switch (aux.header) {
+			case 0:
+			break;
+			case 1:	//LOGIN
+				_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[0].name), aux.content.userName);
+				clientsInfo[clientId].state = LOGGED_IN;
+				aux.id = clientId;
+				aux.header = 2;
+				sendPipedMessage(clientId, aux);
+				//gameData.players[clientId].id = clientId;
+				//updateGameData();
+				_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
+				//aux.header = 2;
+				//aux.content.confirmation = false;
+			break;
+		}
+	}
+
+	FlushFileBuffers(hPipe);
+	DisconnectNamedPipe(hPipe);
+	CloseHandle(hPipe);
+	return 1;
+}
+
+DWORD WINAPI ReadPipedMessagesControl(LPVOID param) {
+	HANDLE hPipe = INVALID_HANDLE_VALUE, hThread = NULL;
+	BOOL isConnected = FALSE;
+	DWORD dwThreadId;
+	LPCTSTR pipeName = PIPE_NAME;
+
+	while (gameData.gameState != OFF) {
+		hPipe = CreateNamedPipe(
+			pipeName,
+			PIPE_ACCESS_DUPLEX,
+			PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+			PIPE_UNLIMITED_INSTANCES,
+			NULL,
+			NULL,
+			0,
+			NULL);
+
+		if (hPipe == INVALID_HANDLE_VALUE) {
+			_tprintf(TEXT("CreateNamedPipe failed. Error: %d\n"), GetLastError());
+			return -1;
+			//maybe error? teorica do prof
+		}
+
+		isConnected = ConnectNamedPipe(hPipe, NULL);
+		if (!isConnected) {
+			if (GetLastError() == ERROR_PIPE_CONNECTED)
+				isConnected = TRUE;
+			else
+				isConnected = FALSE;
+		}
+
+		if (isConnected) {
+			hThread = CreateThread(
+				NULL,
+				0,
+				ReadPipedMessagesInstances,
+				(LPVOID)hPipe,
+				0,
+				NULL);
+
+			if (hThread == NULL) {
+				_tprintf(TEXT("Error creating thread: %d\n"), GetLastError());
+				return -1;
+			} else
+				CloseHandle(hThread); //if it goes right there's no need for handle
+		} else
+			CloseHandle(hPipe);//if not connected no need for hPipe and goes to next iteration
+	}
+	return 0;
+}
+
 int _tmain(int argc, LPTSTR argv[]) {
 
 #ifdef UNICODE
@@ -418,7 +548,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 #endif
 
 	TCHAR command[STRINGBUFFERSIZE];
-	HANDLE hReadMessagesThread, hBallThread;
+	HANDLE hReadMessagesThread, hBallThread, hPipeReadThread;
 
 	HKEY hKey;
 	DWORD result;
@@ -432,7 +562,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 		return -1;
 	}
 
-	if (initialization() == 0) {
+	if (initializeLocalMemory() == 0) {
 		_tprintf(TEXT("Shared Memory error (%d).\n"), GetLastError());
 		return 0;
 	}
@@ -440,6 +570,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 		_tprintf(TEXT("Configuration file error\n"));
 		return 0;
 	}
+
+	hPipeReadThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadPipedMessagesControl, NULL, 0, NULL);
 
 	initializeClientInfo();
 

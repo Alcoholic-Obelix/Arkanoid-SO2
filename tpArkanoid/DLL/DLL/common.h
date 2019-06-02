@@ -38,6 +38,12 @@
 #define SEMAPHORE_NAME_SS TEXT("sss")
 #define MUTEX_NAME_CS TEXT("mtcs")
 
+//NAMEDPIPES
+#define PIPE_NAME TEXT("\\\\.\\pipe\\np")
+#define MAX_CONECTION_TRIES 5
+
+
+#define PIPEBUFFERSIZE 2048
 #define STRINGBUFFERSIZE 64
 #define MSGBUFFERSIZE 10
 #define MAX_SEM_COUNT 10
@@ -70,6 +76,7 @@ typedef struct clientsInfo {
 	int id;
 	TCHAR name[STRINGBUFFERSIZE];
 	int state;
+	HANDLE hPipe;
 } ClientsInfo;
 
 ///////////////GAMEDATA

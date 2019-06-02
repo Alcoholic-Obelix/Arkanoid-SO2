@@ -8,13 +8,13 @@
 
 #include "common.h"
 
-extern "C" DLL_API int InitializeClientConnections();
+extern "C" DLL_API int LocalInitializeClientConnections();
 
-extern "C" DLL_API int Login(TCHAR *name);
+extern "C" DLL_API int LocalLogin(TCHAR *name);
 
-extern "C" DLL_API int SendMessageToServer(Message content);
+extern "C" DLL_API int LocalSendMessageToServer(Message content);
 
-extern "C" DLL_API int ReceiveMessage(Message* aux);
+extern "C" DLL_API int LocalReceiveMessage(Message* aux);
 
-extern "C" DLL_API int ReceiveBroadcast(GameData* aux);
+extern "C" DLL_API int LocalReceiveBroadcast(GameData* aux);
 
