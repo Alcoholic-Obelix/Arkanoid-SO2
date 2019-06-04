@@ -19,12 +19,14 @@
 
 //OtherConfs
 #define LOGIN_RECEIVE_TRIALS 5
+#define LOGIN_TRIALS 10
 #define LOGIN_WAIT_TIME 2000
 
 //GameData
 #define GAMEDATA_FILE_NAME TEXT("gd")
 #define GAMEDATA_EVENT_FILE_NAME TEXT("evgd")
-#define MUTEX_NAME_GAMEDATA TEXT("mtgd")
+#define MUTEX_NAME_GAMEDATA_SHARE TEXT("mtgdshare")
+#define MUTEX_NAME_GAMEDATA_SERVER TEXT("mtgdserver")
 
 //Server to Client
 #define MAPPED_FILE_NAME_SC TEXT("FMSC")
@@ -40,7 +42,9 @@
 
 //NAMEDPIPES
 #define PIPE_NAME TEXT("\\\\.\\pipe\\np")
+#define PIPE_NAME_GAMEDATA TEXT("\\\\.\\pipe\\npgd%d")
 #define MAX_CONECTION_TRIES 5
+#define MUTEX_NAME_ADD_USER TEXT("mtau")
 
 
 #define PIPEBUFFERSIZE 2048
@@ -73,10 +77,11 @@ typedef struct top10 {
 } Top10;
 
 typedef struct clientsInfo {
-	int id;
-	TCHAR name[STRINGBUFFERSIZE];
+	BOOL isLocal;
 	int state;
-	HANDLE hPipe;
+	TCHAR name[STRINGBUFFERSIZE];
+	HANDLE hMessagePipe;
+	HANDLE hGamePipe;
 } ClientsInfo;
 
 ///////////////GAMEDATA
@@ -112,7 +117,7 @@ typedef struct powerUp {
 } PowerUp;
 
 typedef union messageContent {			//0 Server to server for shutdown
-	TCHAR userName[STRINGBUFFERSIZE];	//1
+	TCHAR userName[STRINGBUFFERSIZE];	//1 Client trying to login and server response
 	bool confirmation;					//2
 	PowerUp powerUp;					//3
 	bool exit;							//4

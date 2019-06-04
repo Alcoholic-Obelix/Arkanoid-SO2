@@ -11,13 +11,11 @@ HANDLE hGameData, hMutexGameData, hGameDataEvent;
 Buffer *pBufferStoC;
 Buffer *pBufferCtoS;
 
-HANDLE hPipe;
+HANDLE hPipeMessage, hPipeGameData;
 
 GameData *pGameData;
 
-Message aux;
 int myId = -1;
-
 
 int LocalInitializeClientConnections() {
 	/////////////////////SERVER TO CLIENT
@@ -42,7 +40,7 @@ int LocalInitializeClientConnections() {
 		return 0;
 	}
 
-	hMutexStoC = OpenMutex(SYNCHRONIZE, false, MUTEX_NAME_SC);
+	hMutexStoC = OpenMutex(SYNCHRONIZE, FALSE, MUTEX_NAME_SC);
 	if (hMutexStoC == NULL) {
 		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
 		return 0;
@@ -111,7 +109,7 @@ int LocalInitializeClientConnections() {
 		return 0;
 	}
 
-	hMutexGameData = OpenMutex(SYNCHRONIZE, false, MUTEX_NAME_GAMEDATA);
+	hMutexGameData = OpenMutex(SYNCHRONIZE, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
 	if (hMutexGameData == NULL) {
 		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
 		return 0;
@@ -148,33 +146,44 @@ int LocalLogin(TCHAR *name) {
 
 	aux.header = 1; //Login
 	_tcscpy_s(aux.content.userName, _countof(aux.content.userName), name);
-	SendMessageToServer(aux);
+	_tprintf(TEXT("%s\n"), aux.content.userName);
+	LocalSendMessage(aux);
 
 	WaitForSingleObject(hSemaphoreSC, INFINITE);
 	WaitForSingleObject(hMutexStoC, INFINITE);
-	if (_tcscmp(pBufferStoC->message[pBufferStoC->out].content.userName, name) == 0) {
-		myId = pBufferStoC->message[pBufferStoC->out].id;
+	aux = pBufferStoC->message[pBufferStoC->out];
+
+	if (aux.header == 2 && _tcscmp(aux.content.userName, name) == 0) { //if rejected and is for me
+		pBufferStoC->out = (pBufferStoC->out + 1) % MSGBUFFERSIZE;
+		ReleaseMutex(hMutexStoC);
+		if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
+			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+			return -1;
+		}
+		return 0;
+	}
+	else if (aux.header == 1 && (_tcscmp(aux.content.userName, name) == 0)) {//if accepted and is for me
+		myId = aux.id;
 		pBufferStoC->out = (pBufferStoC->out + 1) % MSGBUFFERSIZE;
 		ReleaseMutex(hMutexStoC);
 		if (!ReleaseSemaphore(hSemaphoreSS, 1, NULL)) {
 			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
 			return 0;
 		}
-		_tprintf(TEXT("%d\n"), myId);
+		_tprintf(TEXT("My ID --> %d\n"), myId);
 		return 1;
-	}
-	else {
+	} else {
 		ReleaseMutex(hMutexStoC);
 		if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
 			_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
-			return 0;
+			return -1;
 		}
 		return 0;
 	}
-
+	
 }
 
-int LocalSendMessageToServer(Message content) {
+int LocalSendMessage(Message content) {
 	WaitForSingleObject(hSemaphoreCC, INFINITE);
 	WaitForSingleObject(hMutexCtoS, INFINITE);
 	content.id = myId;
@@ -228,7 +237,7 @@ int PipeInitialize() {
 	BOOL  fSuccess;
 
 	for (int i = 0; i < MAX_CONECTION_TRIES; i++) {
-		hPipe = CreateFile(
+		hPipeMessage = CreateFile(
 			pipeName,
 			GENERIC_READ | GENERIC_WRITE,
 			0,
@@ -237,7 +246,7 @@ int PipeInitialize() {
 			0,
 			NULL);
 
-		if (hPipe != INVALID_HANDLE_VALUE)
+		if (hPipeMessage != INVALID_HANDLE_VALUE)
 			break;
 
 		if (GetLastError() != ERROR_PIPE_BUSY) {
@@ -248,7 +257,7 @@ int PipeInitialize() {
 
 	mode = PIPE_READMODE_MESSAGE;
 	fSuccess = SetNamedPipeHandleState(
-		hPipe,
+		hPipeMessage,
 		&mode,
 		NULL,
 		NULL);
@@ -259,12 +268,80 @@ int PipeInitialize() {
 	return 1;
 }
 
+int RemoteLogin(TCHAR *name) {
+	Message aux;
+	BOOL fSuccess;
+	DWORD bytesRead = 0;
+	DWORD mode;
+	BOOL isConnected = FALSE;
+	TCHAR auxT[STRINGBUFFERSIZE];
+	LPCTSTR pipeName;
+
+	aux.header = 1; //Login
+	_tcscpy_s(aux.content.userName, _countof(aux.content.userName), name);
+	PipeSendMessage(aux);
+
+	fSuccess = ReadFile(
+		hPipeMessage,
+		&aux,
+		sizeof(Message),
+		&bytesRead,
+		NULL);
+
+
+	if (!fSuccess && GetLastError() != ERROR_MORE_DATA)
+		return -1;
+
+	if (aux.content.confirmation == TRUE) {
+		myId = aux.id;
+		_stprintf_s(auxT, _countof(auxT), PIPE_NAME_GAMEDATA, myId);
+		pipeName = auxT;
+		//_tprintf(TEXT("%s\n"), pipeName);
+
+		for (int i = 0; i < LOGIN_RECEIVE_TRIALS; i++) {
+			hPipeGameData = CreateFile(
+				pipeName,
+				GENERIC_READ | GENERIC_WRITE,
+				0,
+				NULL,
+				OPEN_EXISTING,
+				0,
+				NULL);
+
+			if (hPipeGameData != INVALID_HANDLE_VALUE)
+				break;
+
+			if (GetLastError() != ERROR_PIPE_BUSY && i == LOGIN_RECEIVE_TRIALS) {
+				_tprintf(TEXT("Can't open pipe. Error: %d.\n"), GetLastError());
+				return -1;
+			}
+			Sleep(1000);
+		}
+
+		mode = PIPE_READMODE_MESSAGE;
+		fSuccess = SetNamedPipeHandleState(
+			hPipeGameData,
+			&mode,
+			NULL,
+			NULL);
+		if (!fSuccess) {
+			_tprintf(TEXT("SetNamedPipe Error: %d."), GetLastError());
+			return -1;
+		}
+		_tprintf(TEXT("GamePipe successfully Created\n"));
+		return 1;
+	}
+	else 
+		return 0;
+
+}
+
 int PipeReceiveMessage(Message *aux) {
 	BOOL fSuccess;
 	DWORD bytesRead = 0;
 
 	fSuccess = ReadFile(
-		hPipe,
+		hPipeMessage,
 		aux,
 		sizeof(Message),
 		&bytesRead,
@@ -272,4 +349,44 @@ int PipeReceiveMessage(Message *aux) {
 
 	if (!fSuccess && GetLastError() != ERROR_MORE_DATA)
 		return -1;
+
+	return 1;
 }
+
+int PipeSendMessage(Message content) {
+	BOOL fSuccess = FALSE;
+	DWORD bytesWritten = 0;
+
+	content.id = myId;
+	fSuccess = WriteFile(
+		hPipeMessage,
+		&content,
+		sizeof(Message),
+		&bytesWritten,
+		NULL);
+
+	if (!fSuccess || bytesWritten != sizeof(Message)) {
+		_tprintf(TEXT("WriteFile failed. Error: %d\n"), GetLastError());
+		return -1;
+	}
+
+	return 1;
+}
+
+int RemoteReceiveGameData(GameData *gameData) {
+	BOOL fSuccess;
+	DWORD bytesRead = 0;
+
+	fSuccess = ReadFile(
+		hPipeGameData,
+		gameData,
+		sizeof(GameData),
+		&bytesRead,
+		NULL);
+
+	if (!fSuccess && GetLastError() != ERROR_MORE_DATA)
+		return -1;
+
+	return 1;
+}
+

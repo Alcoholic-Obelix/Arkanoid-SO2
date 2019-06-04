@@ -21,7 +21,8 @@
 //SYNCRONITAZION HANDLES
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hMutexGameData, hGameDataEvent;
+HANDLE hGameData, hMutexGameDataShare, hMutexGameDataServer, hGameDataEvent;
+HANDLE hMutexAddPlayer;
 
 
 //FILEMAPPING POINTERS
@@ -34,6 +35,8 @@ GameData gameData;
 Config config;
 ClientsInfo clientsInfo[20];
 int nClients;
+
+//TODO: config from main argument
 
 int initializeLocalMemory() {
 	//Game Data
@@ -60,8 +63,14 @@ int initializeLocalMemory() {
 		CloseHandle(pGameData);
 	}
 
-	hMutexGameData = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA);
-	if (hMutexGameData == NULL) {
+	hMutexGameDataShare = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
+	if (hMutexGameDataShare == NULL) {
+		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
+		return 0;
+	}
+	
+	hMutexGameDataServer = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA_SERVER);
+	if (hMutexGameDataServer == NULL) {
 		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
 		return 0;
 	}
@@ -188,7 +197,6 @@ int initializeLocalMemory() {
 	return 1;
 }
 
-
 int configSwitch(TCHAR *str, int value) {
 	//"switch case" de strings para comparar no ficheiro config. Se corresponder adiciona o value ao campo correspondente
 	if (_tcscmp(str, TEXT("max_players")) == 0) {
@@ -259,6 +267,12 @@ int initializeConfig() {
 }
 
 void initializeClientInfo() {
+	hMutexAddPlayer = CreateMutex(NULL, FALSE, MUTEX_NAME_SC);
+	if (hMutexStoC == NULL) {
+		_tprintf(TEXT("Error in mutex AddPlayer (%d).\n"), GetLastError());
+		return;
+	}
+
 	for (int i = 0; i < config.maxPlayers; i++)	{
 		clientsInfo[i].state = EMPTY;
 	}
@@ -293,18 +307,6 @@ void drawBorders() {
 	}
 }
 
-void sendMessage(Message content) {
-	WaitForSingleObject(hSemaphoreSS, INFINITE);
-	WaitForSingleObject(hMutexStoC, INFINITE);
-	pBufferStoC->message[pBufferStoC->in] = content;
-	//*(pMessageStoC + *inCounter) = content;
-	pBufferStoC->in = ((pBufferStoC->in) + 1) % MSGBUFFERSIZE;
-	ReleaseMutex(hMutexStoC);
-	if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
-		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
-	}	
-}
-
 int ExitReadingThread() {
 
 	Message exitMessage;
@@ -323,26 +325,70 @@ int ExitReadingThread() {
 	return 1;
 }
 
+
+void sendGameDataToAllPipes() {
+	BOOL fSuccess = FALSE;
+	DWORD bytesWritten = 0;
+
+	
+	for (int i = 0; i < config.maxPlayers; i++) {
+		if (clientsInfo[i].state == LOGGED_IN && !clientsInfo[i].isLocal) {
+			fSuccess = WriteFile(
+				clientsInfo[i].hGamePipe,
+				&gameData,
+				sizeof(GameData),
+				&bytesWritten,
+				NULL);
+
+			if (!fSuccess || bytesWritten != sizeof(gameData)) {
+				_tprintf(TEXT("GameData WriteFile failed for id: %d. Error: %d\n"), i, GetLastError());
+			}
+		}
+			
+	}
+}
+
 void updateGameData() {
-	WaitForSingleObject(hMutexGameData, INFINITE);
+	WaitForSingleObject(hMutexGameDataShare, INFINITE);
 	*pGameData = gameData;
-	ReleaseMutex(hMutexGameData);
+	sendGameDataToAllPipes();
+	ReleaseMutex(hMutexGameDataShare);
 
 	if (!SetEvent(hGameDataEvent)) {
 		printf("SetEvent failed (%d)\n", GetLastError());
 	}
 }
 
-int findEmptyClient(){
-	for (int i = 0; i < config.maxPlayers; i++)	{
-		if (clientsInfo[i].state == EMPTY)
-			return i;
-	}
-	return -1;
+
+void sendMessage(Message content) {
+	WaitForSingleObject(hSemaphoreSS, INFINITE);
+	WaitForSingleObject(hMutexStoC, INFINITE);
+	pBufferStoC->message[pBufferStoC->in] = content;
+	pBufferStoC->in = ((pBufferStoC->in) + 1) % MSGBUFFERSIZE;
+	ReleaseMutex(hMutexStoC);
+	if (!ReleaseSemaphore(hSemaphoreSC, 1, NULL)) {
+		_tprintf(TEXT("Release Semaphore Error: (%d). \n"), GetLastError());
+	}	
 }
 
-void sendPipedMessage(int clientId, Message aux) {
-	HANDLE hPipe = clientsInfo[clientId].hPipe;
+void sendPipedMessageByHandle(HANDLE hPipe, Message aux) {
+	BOOL fSuccess = FALSE;
+	DWORD bytesWritten = 0;
+
+	fSuccess = WriteFile(
+		hPipe,
+		&aux,
+		sizeof(Message),
+		&bytesWritten,
+		NULL);
+
+	if (!fSuccess || bytesWritten != sizeof(Message)) {
+		_tprintf(TEXT("WriteFile failed. Error: %d\n"), GetLastError());
+	}
+}
+
+void sendPipedMessageById(int clientId, Message aux) {
+	HANDLE hPipe = clientsInfo[clientId].hMessagePipe;
 	BOOL fSuccess = FALSE;
 	DWORD bytesWritten = 0;
 
@@ -356,6 +402,80 @@ void sendPipedMessage(int clientId, Message aux) {
 		if (!fSuccess || bytesWritten != sizeof(Message)) {
 			_tprintf(TEXT("WriteFile failed. Error: %d\n"), GetLastError());
 		}
+}
+
+int addUser(BOOL isLocal, TCHAR *name, HANDLE hMessagePipe, HANDLE hGamePipe) {
+	int clientId = -1;
+
+	WaitForSingleObject(hMutexAddPlayer, INFINITE);
+
+	for (int i = 0; i < config.maxPlayers; i++) {
+		if (clientsInfo[i].state == EMPTY) {
+			clientId = i;
+			break;
+		}
+	}
+
+	if (clientId == -1) {
+		ReleaseMutex(hMutexAddPlayer);
+		return -1;
+	}
+
+	clientsInfo[clientId].isLocal = isLocal;
+	clientsInfo[clientId].state = LOGGED_IN;
+	clientsInfo[clientId].hMessagePipe = hMessagePipe;
+	clientsInfo[clientId].hGamePipe = hGamePipe;
+	_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[clientId].name), name);
+	ReleaseMutex(hMutexAddPlayer);
+
+	return clientId;
+}
+
+int createGameDataPipe(int id) {
+	HANDLE hGamePipe = INVALID_HANDLE_VALUE;
+	BOOL isConnected = FALSE;
+	TCHAR aux[STRINGBUFFERSIZE];
+	LPCTSTR pipeName;
+
+	_stprintf_s(aux, _countof(aux), PIPE_NAME_GAMEDATA, id);
+	pipeName = aux;
+	//_tprintf(TEXT("%s\n"), pipeName);
+
+	while (gameData.gameState != OFF) {
+		hGamePipe = CreateNamedPipe(
+			pipeName,
+			PIPE_ACCESS_DUPLEX,
+			PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+			PIPE_UNLIMITED_INSTANCES,
+			NULL,
+			NULL,
+			0,
+			NULL);
+
+		if (hGamePipe == INVALID_HANDLE_VALUE) {
+			_tprintf(TEXT("CreateNamedPipe failed. Error: %d\n"), GetLastError());
+			return -1;
+			//maybe error? teorica do prof
+		}
+
+		isConnected = ConnectNamedPipe(hGamePipe, NULL);
+		if (!isConnected) {
+			if (GetLastError() == ERROR_PIPE_CONNECTED)
+				isConnected = TRUE;
+			else
+				isConnected = FALSE;
+		}
+
+		if (isConnected) {
+			WaitForSingleObject(hMutexAddPlayer, INFINITE);
+			clientsInfo[id].hGamePipe = hGamePipe;
+			ReleaseMutex(hMutexAddPlayer);
+			_tprintf(TEXT("GamePipe successfully Created\n"));
+		}
+		else
+			CloseHandle(hGamePipe);//if not connected no need for hPipe and goes to next iteration
+	}
+	return 0;
 }
 
 DWORD WINAPI BallThread(LPVOID param) {
@@ -390,6 +510,7 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 	while (gameData.gameState != OFF) {
 		WaitForSingleObject(hSemaphoreCS, INFINITE);
 		WaitForSingleObject(hMutexCtoS, INFINITE);
+		_tprintf(TEXT("1\n"));
 		aux = pBufferCtoS->message[pBufferCtoS->out];
 		pBufferCtoS->out = (pBufferCtoS->out + 1) % MSGBUFFERSIZE;
 		ReleaseMutex(hMutexCtoS);
@@ -401,21 +522,15 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 			case 0:
 				break;
 			case 1 :	//LOGIN
-				clientId = findEmptyClient();
-				if (clientId != -1) {
-					clientsInfo[clientId].id = clientId;
-					_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[0].name), aux.content.userName);
-					clientsInfo[clientId].state = LOGGED_IN;
-					aux.id = clientId;
+				clientId = addUser(TRUE, aux.content.userName, NULL, NULL);
+				if (clientId == -1) {
 					aux.header = 2;
-					sendMessage(aux);
-					gameData.players[clientId].id = clientId;
-					updateGameData();
-					_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
 				}
 				else {
-					aux.header = 2;
-					aux.content.confirmation = false;
+					aux.id = clientId;
+					aux.header = 1;
+					sendMessage(aux);
+					_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
 				}
 				sendMessage(aux);
 				break;
@@ -433,25 +548,21 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 	Message aux;
 	int clientId;
 
-	DWORD bytesRead = 0, replyBytes = 0;
+	DWORD bytesRead = 0, replyBytes = 0, bytesWritten = 0;
 	BOOL fSuccess = FALSE;
-	HANDLE hPipe = NULL;
+	HANDLE hMessagePipe = NULL;
 
 	if (param == NULL) {
 		_tprintf(TEXT("Error. No param value.\n"));
 		return (DWORD)-1;
 	}
 
-	hPipe = (HANDLE)param;
-	clientId = findEmptyClient();
-	if (clientId == -1) {
-		_tprintf(TEXT("Clients are full.\n"));
-	}
-	clientsInfo[clientId].hPipe = hPipe;
+	hMessagePipe = (HANDLE)param;
 
+	fSuccess = FALSE;
 	while (gameData.gameState != OFF) {
 		fSuccess = ReadFile(
-			hPipe,
+			hMessagePipe,
 			&aux,
 			sizeof(Message),
 			&bytesRead,
@@ -469,23 +580,33 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 			case 0:
 			break;
 			case 1:	//LOGIN
-				_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[0].name), aux.content.userName);
-				clientsInfo[clientId].state = LOGGED_IN;
-				aux.id = clientId;
-				aux.header = 2;
-				sendPipedMessage(clientId, aux);
-				//gameData.players[clientId].id = clientId;
-				//updateGameData();
-				_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
-				//aux.header = 2;
-				//aux.content.confirmation = false;
+				clientId = addUser(FALSE, aux.content.userName, hMessagePipe, NULL); //If it's denied
+				if (clientId == -1) {
+					_tprintf(TEXT("Clients are full.\n"));
+					aux.id = clientId;
+					aux.header = 2;
+					aux.content.confirmation = FALSE;
+					sendPipedMessageByHandle(hMessagePipe, aux);
+				}
+				else {                                                //if its accepted
+					aux.id = clientId;
+					aux.header = 2;
+					aux.content.confirmation = TRUE;
+					sendPipedMessageByHandle(hMessagePipe, aux);
+					_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
+					createGameDataPipe(clientId);
+				}
+			break;
+			case 2:
+				_tprintf(TEXT("header = 2\n"));
+				sendPipedMessageByHandle(hMessagePipe, aux);
 			break;
 		}
 	}
 
-	FlushFileBuffers(hPipe);
-	DisconnectNamedPipe(hPipe);
-	CloseHandle(hPipe);
+	FlushFileBuffers(hMessagePipe);
+	DisconnectNamedPipe(hMessagePipe);
+	CloseHandle(hMessagePipe);
 	return 1;
 }
 
@@ -562,36 +683,26 @@ int _tmain(int argc, LPTSTR argv[]) {
 		return -1;
 	}
 
-	if (initializeLocalMemory() == 0) {
-		_tprintf(TEXT("Shared Memory error (%d).\n"), GetLastError());
-		return 0;
-	}
-	if (initializeConfig()== 0) {
-		_tprintf(TEXT("Configuration file error\n"));
-		return 0;
-	}
-
-	hPipeReadThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadPipedMessagesControl, NULL, 0, NULL);
-
+	initializeLocalMemory();
+	initializeConfig();
 	initializeClientInfo();
-
-	nClients = 0;
-
 	gameData.gameState = LOGIN;
+	nClients = 0;
+	
+	hPipeReadThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadPipedMessagesControl, NULL, 0, NULL);
 	hReadMessagesThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, NULL);
+
+	
 	_tprintf(TEXT("Server Ready\n"));
-	_gettch();
-	gameData.gameState = GAME;
-	hBallThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, NULL);
 
 	while (gameData.gameState != OFF) {
 		fflush(stdin);
 		_fgetts(command, STRINGBUFFERSIZE, stdin);
 		command[_tcslen(command) - 1] = '\0';
-		//_tprintf(command);
 
 		if (_tcscmp(command, TEXT("start")) == 0) {
 			gameData.gameState = GAME;
+			hBallThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)BallThread, NULL, 0, NULL);
 		}
 		else if (_tcscmp(command, TEXT("top")) == 0) {
 			/*gameData.score = 115;
@@ -607,8 +718,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 			CloseHandle(hMapFileStoC);
 			gameData.gameState = OFF;
 			ExitReadingThread();
-			WaitForSingleObject(hReadMessagesThread, INFINITE);
-			WaitForSingleObject(hBallThread, 1000);
+			//WaitForSingleObject(hReadMessagesThread, INFINITE);
+			//WaitForSingleObject(hBallThread, 1000);
 		}
 	}
 }
