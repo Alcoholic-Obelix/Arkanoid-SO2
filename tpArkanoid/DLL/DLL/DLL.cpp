@@ -7,7 +7,7 @@
 
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hMutexGameData, hGameDataEvent;
+HANDLE hGameData, hMutexGameDataShare, hGameDataEvent;
 Buffer *pBufferStoC;
 Buffer *pBufferCtoS;
 
@@ -109,8 +109,8 @@ int LocalInitializeClientConnections() {
 		return 0;
 	}
 
-	hMutexGameData = OpenMutex(SYNCHRONIZE, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
-	if (hMutexGameData == NULL) {
+	hMutexGameDataShare = OpenMutex(SYNCHRONIZE, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
+	if (hMutexGameDataShare == NULL) {
 		_tprintf(TEXT("Mutex Opening Error (%d).\n"), GetLastError());
 		return 0;
 	}
@@ -223,9 +223,9 @@ int LocalReceiveMessage(Message *aux) {
 
 int LocalReceiveBroadcast(GameData *gameData) {
 	WaitForSingleObject(hGameDataEvent, INFINITE);
-	WaitForSingleObject(hMutexGameData, INFINITE);
+	WaitForSingleObject(hMutexGameDataShare, INFINITE);
 	*gameData = *pGameData;
-	ReleaseMutex(hMutexGameData);
+	ReleaseMutex(hMutexGameDataShare);
 	ResetEvent(hGameDataEvent);
 
 	return 1;

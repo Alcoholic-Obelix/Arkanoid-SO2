@@ -1,10 +1,13 @@
-﻿  pch.cpp
-  Client.cpp
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(171): warning C4101: 'hReadMessagesThread': unreferenced local variable
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(172): warning C4101: 'aux': unreferenced local variable
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(171): warning C4101: 'hUpdateGameDataThread': unreferenced local variable
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(117): warning C4715: 'ReadPipedMessages': not all control paths return a value
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(139): warning C4715: 'ReadLocalMessages': not all control paths return a value
+﻿  Client.cpp
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(160): warning C4101: 'nBytes': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(163): warning C4101: 'aux': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(163): warning C4101: 'j': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(163): warning C4101: 'i': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(161): warning C4101: 'h': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(249): warning C4101: 'hReadMessagesThread': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(250): warning C4101: 'aux': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(249): warning C4101: 'hUpdateGameDataThread': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(81): warning C4715: 'ReadLocalMessages': not all control paths return a value
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\client\client\client.cpp(59): warning C4715: 'ReadPipedMessages': not all control paths return a value
   Client.vcxproj -> C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\Client\Debug\Client.exe
-  ..\..\DLL\Debug\DLL.dll
-  1 File(s) copied
+  0 File(s) copied

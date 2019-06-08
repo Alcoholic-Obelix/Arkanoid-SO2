@@ -21,8 +21,9 @@
 //SYNCRONITAZION HANDLES
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hMutexGameDataShare, hMutexGameDataServer, hGameDataEvent;
+HANDLE hGameData, hMutexGameDataShare, hGameDataEvent;
 HANDLE hMutexAddPlayer;
+HANDLE hBallTimer;
 
 
 //FILEMAPPING POINTERS
@@ -65,12 +66,6 @@ int initializeLocalMemory() {
 
 	hMutexGameDataShare = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
 	if (hMutexGameDataShare == NULL) {
-		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
-		return 0;
-	}
-	
-	hMutexGameDataServer = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA_SERVER);
-	if (hMutexGameDataServer == NULL) {
 		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
 		return 0;
 	}
@@ -194,6 +189,11 @@ int initializeLocalMemory() {
 		printf("CreateSemaphore error: %d\n", GetLastError());
 		return 0;
 	}
+
+	hBallTimer = CreateWaitableTimer(NULL, TRUE, NULL);
+	if (NULL == hBallTimer) 
+		printf("CreateWaitableTimer failed (%d)\n", GetLastError());
+
 	return 1;
 }
 
@@ -284,29 +284,6 @@ void printClientState() {
 	}
 }
 
-void drawBorders() {
-	for (int i = 0; i < MAX_HEIGHT; i++) {
-		for (int j = 0; j < MAX_WIDTH; j++) {
-			gotoxy(j, i);
-			_tprintf(TEXT(" "));
-		}
-	}
-	for (int i = 0; i < MAX_WIDTH; i++) {
-		gotoxy(i, 0);
-		_tprintf(TEXT("#"));
-	}
-	for (int i = 1; i < MAX_HEIGHT; i++) {
-		gotoxy(0, i);
-		_tprintf(TEXT("#"));
-		gotoxy(MAX_WIDTH - 1, i);
-		_tprintf(TEXT("#"));
-	}
-	for (int i = 0; i < MAX_WIDTH; i++) {
-		gotoxy(i, MAX_HEIGHT);
-		_tprintf(TEXT("#"));
-	}
-}
-
 int ExitReadingThread() {
 
 	Message exitMessage;
@@ -358,7 +335,6 @@ void updateGameData() {
 		printf("SetEvent failed (%d)\n", GetLastError());
 	}
 }
-
 
 void sendMessage(Message content) {
 	WaitForSingleObject(hSemaphoreSS, INFINITE);
@@ -478,10 +454,23 @@ int createGameDataPipe(int id) {
 	return 0;
 }
 
+void ballTimer() {
+
+	LARGE_INTEGER liDueTime;
+	liDueTime.QuadPart = BALL_TIMER;
+
+	if (!SetWaitableTimer(hBallTimer, &liDueTime, 0, NULL, NULL, 0)) {
+		_tprintf(TEXT("SetWaitableTimer failed (%d)\n"), GetLastError());
+	}
+
+	if (WaitForSingleObject(hBallTimer, INFINITE) != WAIT_OBJECT_0)
+		printf("WaitForSingleObject failed (%d)\n", GetLastError());
+}
+
 DWORD WINAPI BallThread(LPVOID param) {
 	int x, y, xSpeed, ySpeed;
-	xSpeed = 1;
-	ySpeed = 1;
+	xSpeed = BALL_SPEED;
+	ySpeed = BALL_SPEED;
 	x = 1;
 	y = 1;
 
@@ -490,13 +479,13 @@ DWORD WINAPI BallThread(LPVOID param) {
 		gameData.balls[0].x = x;
 		gameData.balls[0].y = y;
 		updateGameData();
-		Sleep(100);
+		ballTimer();
 		x = x + xSpeed;
 		y = y + ySpeed;
 
-		if (x <= 1 || x >= MAX_WIDTH - 2)
+		if (x <= 0 || (x+BALL_SIZE) >= GAME_WIDTH)
 			xSpeed *= -1;
-		if (y <= 1 || y >= MAX_HEIGHT - 1)
+		if (y <= 0 || (y+BALL_SIZE) >= GAME_HEIGHT)
 			ySpeed *= -1;
 	}
 	_tprintf(TEXT("Bye Ball\n"));
@@ -510,7 +499,6 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 	while (gameData.gameState != OFF) {
 		WaitForSingleObject(hSemaphoreCS, INFINITE);
 		WaitForSingleObject(hMutexCtoS, INFINITE);
-		_tprintf(TEXT("1\n"));
 		aux = pBufferCtoS->message[pBufferCtoS->out];
 		pBufferCtoS->out = (pBufferCtoS->out + 1) % MSGBUFFERSIZE;
 		ReleaseMutex(hMutexCtoS);
@@ -682,6 +670,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 		REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &result) != ERROR_SUCCESS) {
 		return -1;
 	}
+
 
 	initializeLocalMemory();
 	initializeConfig();

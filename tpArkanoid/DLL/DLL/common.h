@@ -26,7 +26,6 @@
 #define GAMEDATA_FILE_NAME TEXT("gd")
 #define GAMEDATA_EVENT_FILE_NAME TEXT("evgd")
 #define MUTEX_NAME_GAMEDATA_SHARE TEXT("mtgdshare")
-#define MUTEX_NAME_GAMEDATA_SERVER TEXT("mtgdserver")
 
 //Server to Client
 #define MAPPED_FILE_NAME_SC TEXT("FMSC")
@@ -53,8 +52,29 @@
 #define MAX_SEM_COUNT 10
 #define MIN_SEM_COUNT 0
 
-#define MAX_WIDTH 60
-#define MAX_HEIGHT 25
+////////////////////////////////////
+//////////////////GUI/////////
+///////////////////////////////
+
+//WINDOWS
+#define WINDOW_WIDTH 800 //1475
+#define WINDOW_HEIGHT 400 //775
+#define GAME_WIDTH 1400
+#define GAME_HEIGHT 750
+
+//BALL
+#define BALL_SIZE 20
+#define BALL_SPEED 1
+#define BALL_TIMER -100000LL
+
+//PLATFORM
+#define PLATFORM_SIZE_X 150
+#define PLATFORM_SIZE_X 15
+#define PLATFORM_SPEED 5
+
+
+
+
 
 typedef struct config {
 	int maxPlayers;
@@ -105,14 +125,17 @@ typedef struct player {
 
 typedef struct gameData {
 	int gameState;
+	int secondsToStart;
 	Player players[20];
 	Ball balls[3];
 } GameData;
 
 //MESSAGES
+typedef struct move {
+	TCHAR direction;   //l-left | 2-right   
+};
+
 typedef struct powerUp {
-	int x;
-	int y;
 	char mode;
 } PowerUp;
 
