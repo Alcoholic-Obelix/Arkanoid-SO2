@@ -21,7 +21,7 @@
 //SYNCRONITAZION HANDLES
 HANDLE hMapFileStoC, hMutexStoC, hSemaphoreSS, hSemaphoreSC;
 HANDLE hMapFileCtoS, hMutexCtoS, hSemaphoreCC, hSemaphoreCS;
-HANDLE hGameData, hMutexGameDataShare, hGameDataEvent;
+HANDLE hGameData, hMutexGameDataShare, hMutexGameDataServer, hGameDataEvent;
 HANDLE hMutexAddPlayer;
 HANDLE hBallTimer;
 
@@ -36,6 +36,8 @@ GameData gameData;
 Config config;
 ClientsInfo clientsInfo[20];
 int nClients;
+int ballId;
+int nBalls;
 
 //TODO: config from main argument
 
@@ -64,6 +66,12 @@ int initializeLocalMemory() {
 		CloseHandle(pGameData);
 	}
 
+	hMutexGameDataServer = CreateMutex(NULL, FALSE, NULL);
+	if (hMutexGameDataServer == NULL) {
+		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
+		return 0;
+	}
+	
 	hMutexGameDataShare = CreateMutex(NULL, FALSE, MUTEX_NAME_GAMEDATA_SHARE);
 	if (hMutexGameDataShare == NULL) {
 		_tprintf(TEXT("O Mutex deu problemas (%d).\n"), GetLastError());
@@ -275,6 +283,11 @@ void initializeClientInfo() {
 
 	for (int i = 0; i < config.maxPlayers; i++)	{
 		clientsInfo[i].state = EMPTY;
+		gameData.players[i].status = EMPTY;
+		gameData.players[i].score = 0;
+		gameData.players[i].platform.mode = 1;
+		gameData.players[i].platform.x = PLATFORM_START_X;
+		gameData.players[i].platform.y = PLATFORM_START_Y;
 	}
 }
 
@@ -302,21 +315,19 @@ int ExitReadingThread() {
 	return 1;
 }
 
-
 void sendGameDataToAllPipes() {
 	BOOL fSuccess = FALSE;
 	DWORD bytesWritten = 0;
 
-	
-	for (int i = 0; i < config.maxPlayers; i++) {
-		if (clientsInfo[i].state == LOGGED_IN && !clientsInfo[i].isLocal) {
-			fSuccess = WriteFile(
+		for (int i = 0; i < nClients; i++) {
+			if (clientsInfo[i].state == LOGGED_IN && clientsInfo[i].isLocal == FALSE) {
+				_tprintf(TEXT("a"));
+				fSuccess = WriteFile(
 				clientsInfo[i].hGamePipe,
 				&gameData,
 				sizeof(GameData),
 				&bytesWritten,
 				NULL);
-
 			if (!fSuccess || bytesWritten != sizeof(gameData)) {
 				_tprintf(TEXT("GameData WriteFile failed for id: %d. Error: %d\n"), i, GetLastError());
 			}
@@ -385,7 +396,7 @@ int addUser(BOOL isLocal, TCHAR *name, HANDLE hMessagePipe, HANDLE hGamePipe) {
 
 	WaitForSingleObject(hMutexAddPlayer, INFINITE);
 
-	for (int i = 0; i < config.maxPlayers; i++) {
+	for (int i = 0; i <= nClients; i++) {
 		if (clientsInfo[i].state == EMPTY) {
 			clientId = i;
 			break;
@@ -396,12 +407,13 @@ int addUser(BOOL isLocal, TCHAR *name, HANDLE hMessagePipe, HANDLE hGamePipe) {
 		ReleaseMutex(hMutexAddPlayer);
 		return -1;
 	}
-
 	clientsInfo[clientId].isLocal = isLocal;
 	clientsInfo[clientId].state = LOGGED_IN;
 	clientsInfo[clientId].hMessagePipe = hMessagePipe;
 	clientsInfo[clientId].hGamePipe = hGamePipe;
 	_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[clientId].name), name);
+	gameData.players[clientId].status == LOGGED_IN;
+	nClients++;
 	ReleaseMutex(hMutexAddPlayer);
 
 	return clientId;
@@ -454,6 +466,26 @@ int createGameDataPipe(int id) {
 	return 0;
 }
 
+void movePlatform(int id, TCHAR direction) {
+	WaitForSingleObject(hMutexGameDataShare, INFINITE);
+
+	if (direction == TEXT('l')) {
+		if (gameData.players[id].platform.x - PLATFORM_SPEED >= 0)
+			gameData.players[id].platform.x = gameData.players[id].platform.x - PLATFORM_SPEED;
+		else
+			gameData.players[id].platform.x = 0;
+	}
+	else if (direction == TEXT('r')) {
+		if (gameData.players[id].platform.x + PLATFORM_SIZE_X + PLATFORM_SPEED <= GAME_WIDTH)
+			gameData.players[id].platform.x = gameData.players[id].platform.x + PLATFORM_SPEED;
+		else
+			gameData.players[id].platform.x = GAME_WIDTH - PLATFORM_SIZE_X;
+	}
+
+	ReleaseMutex(hMutexGameDataShare);
+	updateGameData();
+}
+
 void ballTimer() {
 
 	LARGE_INTEGER liDueTime;
@@ -467,27 +499,56 @@ void ballTimer() {
 		printf("WaitForSingleObject failed (%d)\n", GetLastError());
 }
 
+BOOL isTouchingPlatform(int id) {
+	for (int i = 0; i < nClients; i++) {
+		if (gameData.balls[id].y + BALL_SIZE > PLATFORM_START_Y && gameData.balls[id].y < PLATFORM_START_Y)
+			if(gameData.balls[id].x + BALL_SIZE >= gameData.players[i].platform.x && gameData.balls[id].x <= gameData.players[i].platform.x + PLATFORM_SIZE_X)
+				return true;
+	}
+	return FALSE;
+}
+
 DWORD WINAPI BallThread(LPVOID param) {
-	int x, y, xSpeed, ySpeed;
+	int id;
+	WaitForSingleObject(hMutexGameDataShare, INFINITE);
+	id = gameData.nBalls;
+	gameData.nBalls++;
+	ReleaseMutex(hMutexGameDataShare);
+	//updateGameData();
+
+	int x, y, xSpeed, ySpeed, yCounter;
 	xSpeed = BALL_SPEED;
 	ySpeed = BALL_SPEED;
-	x = 1;
-	y = 1;
+	x = 600;
+	y = 600;
+	yCounter = 0;
 
 	while (gameData.gameState == GAME) {
-
+		WaitForSingleObject(hMutexGameDataShare, INFINITE);
 		gameData.balls[0].x = x;
 		gameData.balls[0].y = y;
+		ReleaseMutex(hMutexGameDataShare);
+
 		updateGameData();
 		ballTimer();
+
 		x = x + xSpeed;
 		y = y + ySpeed;
 
 		if (x <= 0 || (x+BALL_SIZE) >= GAME_WIDTH)
 			xSpeed *= -1;
-		if (y <= 0 || (y+BALL_SIZE) >= GAME_HEIGHT)
-			ySpeed *= -1;
+		if (y <= 0 || (y+BALL_SIZE) >= GAME_HEIGHT || isTouchingPlatform(0))
+			if (yCounter >= 10) {
+				ySpeed *= -1;
+				yCounter = 0;
+			}
+
+		yCounter++;
 	}
+
+	WaitForSingleObject(hMutexGameDataShare, INFINITE);
+	gameData.nBalls--;
+	ReleaseMutex(hMutexGameDataShare);
 	_tprintf(TEXT("Bye Ball\n"));
 	return 0;
 }
@@ -509,6 +570,7 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 		switch (aux.header) {
 			case 0:
 				break;
+
 			case 1 :	//LOGIN
 				clientId = addUser(TRUE, aux.content.userName, NULL, NULL);
 				if (clientId == -1) {
@@ -522,10 +584,16 @@ DWORD WINAPI ReadMessages(LPVOID param) {
 				}
 				sendMessage(aux);
 				break;
-			case 4:
+
+			case 3:
+				movePlatform(aux.id, aux.content.direction);
+				_tprintf(TEXT("%c ID --> %d.\n"), aux.content.direction, clientId);
+				break;
+
+			/*case 4:
 				gameData.gameState = 4;
 				updateGameData();
-				break;
+				break;*/
 		}
 	}
 	_tprintf(TEXT("Bye Messages\n"));
@@ -581,14 +649,18 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 					aux.header = 2;
 					aux.content.confirmation = TRUE;
 					sendPipedMessageByHandle(hMessagePipe, aux);
-					_tprintf(TEXT("%s ID --> %d.\n"), clientsInfo[clientId].name, clientId);
+					_tprintf(TEXT("%s ID --> %d. nClientes-->%d\n"), clientsInfo[clientId].name, clientId, nClients);
 					createGameDataPipe(clientId);
 				}
 			break;
 			case 2:
 				_tprintf(TEXT("header = 2\n"));
 				sendPipedMessageByHandle(hMessagePipe, aux);
-			break;
+				break;
+			case 3:
+				movePlatform(aux.id, aux.content.direction);
+				_tprintf(TEXT("%c ID --> %d.\n"), aux.content.direction, clientId);
+				break;
 		}
 	}
 
@@ -676,7 +748,9 @@ int _tmain(int argc, LPTSTR argv[]) {
 	initializeConfig();
 	initializeClientInfo();
 	gameData.gameState = LOGIN;
+	gameData.nBalls = 0;
 	nClients = 0;
+	ballId = 0;
 	
 	hPipeReadThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadPipedMessagesControl, NULL, 0, NULL);
 	hReadMessagesThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadMessages, NULL, 0, NULL);

@@ -21,21 +21,20 @@
 
 
 GameData gameData;
+Message aux;
 BOOL isLocal;
 int myId;
 TCHAR myName[STRINGBUFFERSIZE];
 TCHAR IP[15];
 
-HANDLE hActualizaJogo;
+
+TCHAR szProgName[] = TEXT("Base");
 HWND hWnd;
 HINSTANCE hInstanceGlobal;
-static HBITMAP hbit, ball, cover, limits;
-static HBRUSH bLimits, bBackground, transparentBrush;
-RECT rc;
-int maxX, maxY, screenX, screenY;
+HBITMAP hbit, ball, cover, platform;
 HDC hdc, memdc, auxdc;
 PAINTSTRUCT area;
-TCHAR szProgName[] = TEXT("Base");
+int maxX, maxY;
 
 
 LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -81,19 +80,20 @@ DWORD WINAPI ReadLocalMessages(LPVOID param) {
 }
 
 DWORD WINAPI LocalUpdateGameData(LPVOID param) {
-	HANDLE handle;
 
 	while (gameData.gameState != OFF) {
 		LocalReceiveBroadcast(&gameData);
-		handle = (HANDLE)TrataEventos(hWnd, WM_PAINT, NULL, NULL);
-		WaitForSingleObject(handle, INFINITE);
+		GameData gd = gameData;
+		InvalidateRect(hWnd, NULL, 1);
 	}
 	return 1;
 }
 
 DWORD WINAPI RemoteUpdateGameData(LPVOID param) {
+	gameData.gameState = GAME;
 	while (gameData.gameState != OFF) {
 		RemoteReceiveGameData(&gameData);
+		InvalidateRect(hWnd, NULL, 1);
 	}
 	return 1;
 
@@ -157,26 +157,19 @@ BOOL CALLBACK TrataLogin(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam) {
 
 
 LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	DWORD nBytes;
-	HANDLE h;
-	//Inicia Jogo
-	int i, j, aux;
-	TCHAR texto[100];
+		TCHAR texto[100];
 
 	switch (msg) {
 		case WM_CREATE:
-			bLimits = CreateSolidBrush(RGB(109, 121, 148));
-			bBackground = CreateSolidBrush(RGB(230, 230, 230));
 			ball = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP1));
 			cover = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP2));
+			platform = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP3));
 			maxX = GetSystemMetrics(SM_CXSCREEN);
 			maxY = GetSystemMetrics(SM_CYSCREEN);
 			hdc = GetDC(hWnd);
-			memdc = CreateCompatibleDC(hdc);
+			auxdc = CreateCompatibleDC(hdc);
 			hbit = CreateCompatibleBitmap(hdc, maxX, maxY);
-			SelectObject(memdc, hbit);
-			ReleaseDC(hWnd, hdc);
-			//hActualizaJogo = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)actualizaJogo, (LPVOID)hWnd, 0, NULL);
+			SelectObject(auxdc, hbit);
 			break;
 
 		case WM_DESTROY:
@@ -184,25 +177,59 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_PAINT:
-			InvalidateRect(hWnd, NULL, 1);
 			hdc = BeginPaint(hWnd, &area);
-			auxdc = CreateCompatibleDC(hdc);
+			
+			SelectObject(auxdc, GetStockObject(WHITE_BRUSH));
+			BitBlt(hdc, 0, 0, maxX, maxY, auxdc, 0, 0, SRCCOPY);
 
 			if (gameData.gameState == LOGIN) {
 				_stprintf_s(texto, 100, TEXT("ARKANOID"));
-				TextOut(hdc, 300, 100, texto, _tcslen(texto));
+				SelectObject(auxdc, GetStockObject(WHITE_PEN));
+				TextOut(hdc, 650, 25, texto, _tcslen(texto));
 				SelectObject(auxdc, cover);
-				BitBlt(hdc, 200, 0, 800, 554, auxdc, 0, 0, SRCCOPY);
+				BitBlt(hdc, 300, 50, 800, 554, auxdc, 0, 0, SRCCOPY);
 			}
 			else if (gameData.gameState == GAME) {
 				SelectObject(auxdc, ball);
 				BitBlt(hdc, gameData.balls[0].x, gameData.balls[0].y, BALL_SIZE, BALL_SIZE, auxdc, 0, 0, SRCCOPY);
+			
+				///*for (int i = 0; i < 3; i++) {
+				//	if (gameData.players[i].status == LOGGED_IN) {
+				//		SelectObject(auxdc, platform);
+				//		BitBlt(hdc, gameData.players[i].platform.x, gameData.players[i].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
+				//	}
+				//}*/
+
+				//SelectObject(auxdc, platform);
+				//BitBlt(hdc, gameData.players[0].platform.x, gameData.players[0].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
+
 			}
 
-			/*SelectObject(auxdc, ball);
-			BitBlt(hdc, x, y, 48, 48, auxdc, 0, 0, SRCCOPY);*/
-			DeleteDC(auxdc);
-			EndPaint(hWnd, &area);
+			
+			EndPaint(hWnd,&area);
+			break;
+
+		
+
+		case WM_KEYDOWN:
+			if (wParam == VK_LEFT) {
+				aux.id = myId;
+				aux.header = 3;
+				aux.content.direction = TEXT('l');
+				if (isLocal)
+					LocalSendMessage(aux);
+				else
+					PipeSendMessage(aux);
+			}
+			if (wParam == VK_RIGHT) {
+				aux.id = myId;
+				aux.header = 3;
+				aux.content.direction = TEXT('r');
+				if (isLocal)
+					LocalSendMessage(aux);
+				else
+					PipeSendMessage(aux);
+			}
 			break;
 
 		case WM_COMMAND:
@@ -214,10 +241,6 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				case ID_EXIT: 
 					PostQuitMessage(0);
 					break;
-
-				/*case IDD_DIALOG2:
-					DialogBox(hInstanceGlobal, MAKEINTRESOURCE(IDD_DIALOG1), hWnd, (DLGPROC)TrataDlg);
-					break;*/
 			}
 
 			break;
@@ -269,20 +292,20 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR lpCmdLine, int nC
    // encontra-se mais abaixo)
 	wcApp.style = CS_HREDRAW | CS_VREDRAW;// Estilo da janela: Fazer o redraw se for
    // modificada horizontal ou verticalmente
-	wcApp.hIcon = LoadIcon(hInst, IDI_APPLICATION);// "hIcon" = handler do ícon normal
+	wcApp.hIcon = LoadIcon(NULL, IDI_APPLICATION);// "hIcon" = handler do ícon normal
    //"NULL" = Icon definido no Windows
    // "IDI_AP..." Ícone "aplicação"
-	wcApp.hIconSm = LoadIcon(hInst, IDI_WINLOGO);// "hIconSm" = handler do ícon pequeno
+	wcApp.hIconSm = LoadIcon(NULL, IDI_WINLOGO);// "hIconSm" = handler do ícon pequeno
 	//"NULL" = Icon definido no Windows
 	// "IDI_INF..." Ícon de informação
-	wcApp.hCursor = LoadCursor(hInst, IDC_ARROW); // "hCursor" = handler do cursor (rato)
+	wcApp.hCursor = LoadCursor(NULL, IDC_ARROW); // "hCursor" = handler do cursor (rato)
    // "NULL" = Forma definida no Windows
    // "IDC_ARROW" Aspecto "seta"
 	wcApp.lpszMenuName = MAKEINTRESOURCE(IDR_MENU1); // Classe do menu que a janela pode ter
    // (NULL = não tem menu)
 	wcApp.cbClsExtra = 0; // Livre, para uso particular
 	wcApp.cbWndExtra = 0; // Livre, para uso particular
-	wcApp.hbrBackground = (HBRUSH)GetStockObject(GRAY_BRUSH);
+	wcApp.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
 	// "hbrBackground" = handler para "brush" de pintura do fundo da janela. Devolvido por
 	// "GetStockObject".Neste caso o fundo será branco
 	// ============================================================================

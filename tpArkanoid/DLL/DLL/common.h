@@ -57,20 +57,22 @@
 ///////////////////////////////
 
 //WINDOWS
-#define WINDOW_WIDTH 800 //1475
-#define WINDOW_HEIGHT 400 //775
+#define WINDOW_WIDTH 1475
+#define WINDOW_HEIGHT 775
 #define GAME_WIDTH 1400
 #define GAME_HEIGHT 750
 
 //BALL
 #define BALL_SIZE 20
-#define BALL_SPEED 1
+#define BALL_SPEED 2
 #define BALL_TIMER -100000LL
 
 //PLATFORM
 #define PLATFORM_SIZE_X 150
-#define PLATFORM_SIZE_X 15
-#define PLATFORM_SPEED 5
+#define PLATFORM_SIZE_Y 10
+#define PLATFORM_SPEED 10
+#define PLATFORM_START_Y 650
+#define PLATFORM_START_X 650
 
 
 
@@ -108,17 +110,17 @@ typedef struct clientsInfo {
 typedef struct ball {
 	int x;
 	int y;
-	char mode;
+	int mode;
 } Ball;
 
 typedef struct platform {
 	int x;
 	int y;
-	char mode;
+	int mode;
 } Platform;
 
 typedef struct player {
-	int id;
+	int status;
 	Platform platform;
 	int score;
 }Player;
@@ -126,24 +128,22 @@ typedef struct player {
 typedef struct gameData {
 	int gameState;
 	int secondsToStart;
+	int nBalls;
 	Player players[20];
 	Ball balls[3];
 } GameData;
 
 //MESSAGES
-typedef struct move {
-	TCHAR direction;   //l-left | 2-right   
-};
-
 typedef struct powerUp {
-	char mode;
+	TCHAR mode;
 } PowerUp;
 
 typedef union messageContent {			//0 Server to server for shutdown
 	TCHAR userName[STRINGBUFFERSIZE];	//1 Client trying to login and server response
 	bool confirmation;					//2
-	PowerUp powerUp;					//3
-	bool exit;							//4
+	TCHAR direction;                    //3 l-left | 2-right   
+	PowerUp powerUp;					//4
+	bool exit;							//5
 } Content;
 
 typedef struct message {
