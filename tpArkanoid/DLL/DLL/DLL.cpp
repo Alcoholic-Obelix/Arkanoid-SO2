@@ -233,7 +233,7 @@ int LocalReceiveBroadcast(GameData *gameData) {
 
 int PipeInitialize() {
 	LPCTSTR pipeName = PIPE_NAME;
-	DWORD mode;
+	DWORD mode =PIPE_READMODE_MESSAGE;
 	BOOL  fSuccess;
 
 	for (int i = 0; i < MAX_CONECTION_TRIES; i++) {
@@ -315,7 +315,7 @@ int RemoteLogin(TCHAR *name) {
 				_tprintf(TEXT("Can't open pipe. Error: %d.\n"), GetLastError());
 				return -1;
 			}
-			Sleep(1000);
+			Sleep(500);
 		}
 
 		mode = PIPE_READMODE_MESSAGE;
@@ -358,6 +358,7 @@ int PipeSendMessage(Message content) {
 	DWORD bytesWritten = 0;
 
 	content.id = myId;
+
 	fSuccess = WriteFile(
 		hPipeMessage,
 		&content,
@@ -385,6 +386,8 @@ int RemoteReceiveGameData(GameData *gameData) {
 		NULL);
 
 	if (!fSuccess && GetLastError() != ERROR_MORE_DATA)
+		return -1;
+	if (bytesRead != sizeof(GameData))
 		return -1;
 
 	return 1;

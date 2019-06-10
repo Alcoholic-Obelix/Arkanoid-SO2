@@ -1,9 +1,4 @@
-﻿  pch.cpp
-  Auxiliary.cpp
-  Server.cpp
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\server\server\server.cpp(415): warning C4553: '==': result of expression not used; did you intend '='?
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\server\server\server.cpp(676): warning C4101: 'dwThreadId': unreferenced local variable
-  Generating Code...
+﻿  Server.cpp
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\server\server\server.cpp(681): warning C4101: 'dwThreadId': unreferenced local variable
   Server.vcxproj -> C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\Server\Debug\Server.exe
-  ..\..\DLL\Debug\DLL.dll
-  1 File(s) copied
+  0 File(s) copied

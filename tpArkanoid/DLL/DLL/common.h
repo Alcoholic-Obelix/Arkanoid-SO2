@@ -60,7 +60,7 @@
 #define WINDOW_WIDTH 1475
 #define WINDOW_HEIGHT 775
 #define GAME_WIDTH 1400
-#define GAME_HEIGHT 750
+#define GAME_HEIGHT 800
 
 //BALL
 #define BALL_SIZE 20
@@ -129,6 +129,7 @@ typedef struct gameData {
 	int gameState;
 	int secondsToStart;
 	int nBalls;
+	int nPlayers;
 	Player players[20];
 	Ball balls[3];
 } GameData;

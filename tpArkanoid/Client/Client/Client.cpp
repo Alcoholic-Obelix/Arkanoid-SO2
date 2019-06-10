@@ -39,6 +39,10 @@ int maxX, maxY;
 
 LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+void sendmsg(Message aux) {
+	Message aux1 = aux;
+	PipeSendMessage(aux);
+}
 DWORD WINAPI ReadPipedMessages(LPVOID param) {
 	Message aux;
 
@@ -83,16 +87,17 @@ DWORD WINAPI LocalUpdateGameData(LPVOID param) {
 
 	while (gameData.gameState != OFF) {
 		LocalReceiveBroadcast(&gameData);
-		GameData gd = gameData;
 		InvalidateRect(hWnd, NULL, 1);
 	}
 	return 1;
 }
 
 DWORD WINAPI RemoteUpdateGameData(LPVOID param) {
+	GameData gd = gameData;
+	int i = 0;
 	gameData.gameState = GAME;
 	while (gameData.gameState != OFF) {
-		RemoteReceiveGameData(&gameData);
+		i = RemoteReceiveGameData(&gameData);
 		InvalidateRect(hWnd, NULL, 1);
 	}
 	return 1;
@@ -109,6 +114,7 @@ BOOL CALLBACK TrataLogin(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam) {
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
 				case IDOK:
+					gameData.gameState = LOGIN;
 					if (IsDlgButtonChecked(hDlg, IDC_RADIO1) == BST_CHECKED) {
 						isLocal = TRUE;
 						GetDlgItemText(hDlg, IDC_EDIT1, myName, STRINGBUFFERSIZE);
@@ -190,19 +196,18 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				BitBlt(hdc, 300, 50, 800, 554, auxdc, 0, 0, SRCCOPY);
 			}
 			else if (gameData.gameState == GAME) {
-				SelectObject(auxdc, ball);
-				BitBlt(hdc, gameData.balls[0].x, gameData.balls[0].y, BALL_SIZE, BALL_SIZE, auxdc, 0, 0, SRCCOPY);
+
+				for (int j = 0; j < gameData.nBalls; j++) {
+					SelectObject(auxdc, ball);
+					BitBlt(hdc, gameData.balls[j].x, gameData.balls[j].y, BALL_SIZE, BALL_SIZE, auxdc, 0, 0, SRCCOPY);
+				}
 			
-				///*for (int i = 0; i < 3; i++) {
-				//	if (gameData.players[i].status == LOGGED_IN) {
-				//		SelectObject(auxdc, platform);
-				//		BitBlt(hdc, gameData.players[i].platform.x, gameData.players[i].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
-				//	}
-				//}*/
-
-				//SelectObject(auxdc, platform);
-				//BitBlt(hdc, gameData.players[0].platform.x, gameData.players[0].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
-
+				for (int i = 0; i < gameData.nPlayers; i++) {
+					if (gameData.players[i].status == LOGGED_IN) {
+						SelectObject(auxdc, platform);
+						BitBlt(hdc, gameData.players[i].platform.x, gameData.players[i].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
+					}
+				}
 			}
 
 			
@@ -212,14 +217,16 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		
 
 		case WM_KEYDOWN:
+			Message auxKeys;
 			if (wParam == VK_LEFT) {
-				aux.id = myId;
-				aux.header = 3;
-				aux.content.direction = TEXT('l');
+				auxKeys.id = myId;
+				auxKeys.header = 3;
+				auxKeys.content.direction = TEXT('l');
 				if (isLocal)
-					LocalSendMessage(aux);
+					LocalSendMessage(auxKeys);
 				else
-					PipeSendMessage(aux);
+					//PipeSendMessage(aux);
+					sendmsg(auxKeys);
 			}
 			if (wParam == VK_RIGHT) {
 				aux.id = myId;

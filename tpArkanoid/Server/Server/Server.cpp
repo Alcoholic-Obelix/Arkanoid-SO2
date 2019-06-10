@@ -321,7 +321,6 @@ void sendGameDataToAllPipes() {
 
 		for (int i = 0; i < nClients; i++) {
 			if (clientsInfo[i].state == LOGGED_IN && clientsInfo[i].isLocal == FALSE) {
-				_tprintf(TEXT("a"));
 				fSuccess = WriteFile(
 				clientsInfo[i].hGamePipe,
 				&gameData,
@@ -412,8 +411,9 @@ int addUser(BOOL isLocal, TCHAR *name, HANDLE hMessagePipe, HANDLE hGamePipe) {
 	clientsInfo[clientId].hMessagePipe = hMessagePipe;
 	clientsInfo[clientId].hGamePipe = hGamePipe;
 	_tcscpy_s(clientsInfo[clientId].name, _countof(clientsInfo[clientId].name), name);
-	gameData.players[clientId].status == LOGGED_IN;
+	gameData.players[clientId].status = LOGGED_IN;
 	nClients++;
+	gameData.nPlayers = nClients;
 	ReleaseMutex(hMutexAddPlayer);
 
 	return clientId;
@@ -427,7 +427,7 @@ int createGameDataPipe(int id) {
 
 	_stprintf_s(aux, _countof(aux), PIPE_NAME_GAMEDATA, id);
 	pipeName = aux;
-	//_tprintf(TEXT("%s\n"), pipeName);
+	_tprintf(TEXT("%s\n"), pipeName);
 
 	while (gameData.gameState != OFF) {
 		hGamePipe = CreateNamedPipe(
@@ -443,7 +443,6 @@ int createGameDataPipe(int id) {
 		if (hGamePipe == INVALID_HANDLE_VALUE) {
 			_tprintf(TEXT("CreateNamedPipe failed. Error: %d\n"), GetLastError());
 			return -1;
-			//maybe error? teorica do prof
 		}
 
 		isConnected = ConnectNamedPipe(hGamePipe, NULL);
@@ -457,8 +456,11 @@ int createGameDataPipe(int id) {
 		if (isConnected) {
 			WaitForSingleObject(hMutexAddPlayer, INFINITE);
 			clientsInfo[id].hGamePipe = hGamePipe;
+			clientsInfo[id].isLocal = FALSE;
 			ReleaseMutex(hMutexAddPlayer);
+			_tprintf(TEXT("Last Error: %d\n"), GetLastError());
 			_tprintf(TEXT("GamePipe successfully Created\n"));
+			return 1;
 		}
 		else
 			CloseHandle(hGamePipe);//if not connected no need for hPipe and goes to next iteration
@@ -514,7 +516,6 @@ DWORD WINAPI BallThread(LPVOID param) {
 	id = gameData.nBalls;
 	gameData.nBalls++;
 	ReleaseMutex(hMutexGameDataShare);
-	//updateGameData();
 
 	int x, y, xSpeed, ySpeed, yCounter;
 	xSpeed = BALL_SPEED;
@@ -616,14 +617,16 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 	hMessagePipe = (HANDLE)param;
 
 	fSuccess = FALSE;
-	while (gameData.gameState != OFF) {
+
+	while (TRUE) {
+		_tprintf(TEXT("A\n"));
 		fSuccess = ReadFile(
 			hMessagePipe,
 			&aux,
 			sizeof(Message),
 			&bytesRead,
 			NULL);
-
+		_tprintf(TEXT("B\n"));
 		if (!fSuccess || bytesRead == 0) {
 			if (GetLastError() == ERROR_BROKEN_PIPE) 
 				_tprintf(TEXT("Client is off. Error: %d\n"), GetLastError());
@@ -636,6 +639,7 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 			case 0:
 			break;
 			case 1:	//LOGIN
+				_tprintf(TEXT("%s\n"), aux.content.userName);
 				clientId = addUser(FALSE, aux.content.userName, hMessagePipe, NULL); //If it's denied
 				if (clientId == -1) {
 					_tprintf(TEXT("Clients are full.\n"));
@@ -658,6 +662,7 @@ DWORD WINAPI ReadPipedMessagesInstances(LPVOID param) {
 				sendPipedMessageByHandle(hMessagePipe, aux);
 				break;
 			case 3:
+				_tprintf(TEXT("%c ID --> %d.\n"), aux.content.direction, clientId);
 				movePlatform(aux.id, aux.content.direction);
 				_tprintf(TEXT("%c ID --> %d.\n"), aux.content.direction, clientId);
 				break;
