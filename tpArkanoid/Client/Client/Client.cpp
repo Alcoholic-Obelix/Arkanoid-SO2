@@ -18,6 +18,7 @@
 #include "common.h"
 #include "resource.h"
 #include "DLL.h"
+#include "Mmsystem.h"
 
 
 GameData gameData;
@@ -31,7 +32,7 @@ TCHAR IP[15];
 TCHAR szProgName[] = TEXT("Base");
 HWND hWnd;
 HINSTANCE hInstanceGlobal;
-HBITMAP hbit, ball, cover, platform;
+HBITMAP hbit, hbit1, ball, cover, platform, brick;
 HDC hdc, memdc, auxdc;
 PAINTSTRUCT area;
 int maxX, maxY;
@@ -43,6 +44,7 @@ void sendmsg(Message aux) {
 	Message aux1 = aux;
 	PipeSendMessage(aux);
 }
+
 DWORD WINAPI ReadPipedMessages(LPVOID param) {
 	Message aux;
 
@@ -161,7 +163,6 @@ BOOL CALLBACK TrataLogin(HWND hDlg, UINT messg, WPARAM wParam, LPARAM lParam) {
 	return FALSE;
 }
 
-
 LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		TCHAR texto[100];
 
@@ -170,12 +171,17 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			ball = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP1));
 			cover = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP2));
 			platform = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP3));
+			brick = LoadBitmap(hInstanceGlobal, MAKEINTRESOURCE(IDB_BITMAP4));
 			maxX = GetSystemMetrics(SM_CXSCREEN);
 			maxY = GetSystemMetrics(SM_CYSCREEN);
 			hdc = GetDC(hWnd);
-			auxdc = CreateCompatibleDC(hdc);
-			hbit = CreateCompatibleBitmap(hdc, maxX, maxY);
-			SelectObject(auxdc, hbit);
+			memdc = CreateCompatibleDC(hdc);
+			hbit = CreateCompatibleBitmap(memdc, maxX, maxY);
+			SelectObject(memdc, hbit);
+			auxdc = CreateCompatibleDC(memdc);
+			hbit1 = CreateCompatibleBitmap(auxdc, maxX, maxY);
+			SelectObject(auxdc, hbit1);
+			ReleaseDC(hWnd, hdc);
 			break;
 
 		case WM_DESTROY:
@@ -183,15 +189,17 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_PAINT:
-			hdc = BeginPaint(hWnd, &area);
+			SelectObject(memdc, CreateSolidBrush(RGB(255, 255, 255)));
+			Rectangle(memdc, 0, 0, maxX, maxY);
 			
-			SelectObject(auxdc, GetStockObject(WHITE_BRUSH));
-			BitBlt(hdc, 0, 0, maxX, maxY, auxdc, 0, 0, SRCCOPY);
+
+			/*SelectObject(auxdc, GetStockObject(WHITE_BRUSH));
+			BitBlt(hdc, 0, 0, maxX, maxY, auxdc, 0, 0, SRCCOPY);*/
 
 			if (gameData.gameState == LOGIN) {
-				_stprintf_s(texto, 100, TEXT("ARKANOID"));
+				/*_stprintf_s(texto, 100, TEXT("ARKANOID"));
 				SelectObject(auxdc, GetStockObject(WHITE_PEN));
-				TextOut(hdc, 650, 25, texto, _tcslen(texto));
+				TextOut(hdc, 650, 25, texto, _tcslen(texto));*/
 				SelectObject(auxdc, cover);
 				BitBlt(hdc, 300, 50, 800, 554, auxdc, 0, 0, SRCCOPY);
 			}
@@ -199,21 +207,33 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				for (int j = 0; j < gameData.nBalls; j++) {
 					SelectObject(auxdc, ball);
-					BitBlt(hdc, gameData.balls[j].x, gameData.balls[j].y, BALL_SIZE, BALL_SIZE, auxdc, 0, 0, SRCCOPY);
+					BitBlt(memdc, gameData.balls[j].x, gameData.balls[j].y, BALL_SIZE, BALL_SIZE, auxdc, 0, 0, SRCCOPY);
+					
 				}
 			
 				for (int i = 0; i < gameData.nPlayers; i++) {
 					if (gameData.players[i].status == LOGGED_IN) {
 						SelectObject(auxdc, platform);
-						BitBlt(hdc, gameData.players[i].platform.x, gameData.players[i].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
+						BitBlt(memdc, gameData.players[i].platform.x, gameData.players[i].platform.y, PLATFORM_SIZE_X, PLATFORM_SIZE_Y, auxdc, 0, 0, SRCCOPY);
 					}
+				}
+
+				for (int k = 0; k < 30; k++) {
+					if (gameData.bricks[k].hp != 0) {
+						SelectObject(auxdc, brick);
+						BitBlt(memdc, gameData.bricks[k].x, gameData.bricks[k].y, BRICK_SIZE_X, BRICK_SIZE_Y, auxdc, 0, 0, SRCCOPY);
+					}
+					
 				}
 			}
 
-			
-			EndPaint(hWnd,&area);
+			hdc = BeginPaint(hWnd, &area);
+			BitBlt(hdc, 0, 0, maxX, maxY, memdc, 0, 0, SRCCOPY);
+			EndPaint(hWnd, &area);
 			break;
 
+		case WM_ERASEBKGND:
+			break;
 		
 
 		case WM_KEYDOWN:
@@ -229,6 +249,7 @@ LRESULT CALLBACK TrataEventos(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					sendmsg(auxKeys);
 			}
 			if (wParam == VK_RIGHT) {
+				PlaySound(TEXT("you-know-what-im-talking.wav"), NULL, SND_MEMORY | SND_FILENAME | SND_ASYNC);
 				aux.id = myId;
 				aux.header = 3;
 				aux.content.direction = TEXT('r');

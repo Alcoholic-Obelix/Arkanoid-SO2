@@ -64,8 +64,8 @@
 
 //BALL
 #define BALL_SIZE 20
-#define BALL_SPEED 2
-#define BALL_TIMER -100000LL
+#define BALL_SPEED 1
+#define BALL_TIMER -40000LL
 
 //PLATFORM
 #define PLATFORM_SIZE_X 150
@@ -73,6 +73,10 @@
 #define PLATFORM_SPEED 10
 #define PLATFORM_START_Y 650
 #define PLATFORM_START_X 650
+
+//BRICKS
+#define BRICK_SIZE_X 60
+#define BRICK_SIZE_Y 15
 
 
 
@@ -125,6 +129,13 @@ typedef struct player {
 	int score;
 }Player;
 
+typedef struct brick {
+	int type;
+	int x;
+	int y;
+	int hp;
+} Brick;
+
 typedef struct gameData {
 	int gameState;
 	int secondsToStart;
@@ -132,6 +143,7 @@ typedef struct gameData {
 	int nPlayers;
 	Player players[20];
 	Ball balls[3];
+	Brick bricks[30];
 } GameData;
 
 //MESSAGES

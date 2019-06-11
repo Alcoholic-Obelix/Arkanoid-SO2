@@ -1,4 +1,4 @@
 ﻿  Server.cpp
-c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\server\server\server.cpp(681): warning C4101: 'dwThreadId': unreferenced local variable
+c:\users\ricar\onedrive - isec\isec\cadeiras\sistemasoperativos2\arkanoid-so2\tparkanoid\server\server\server.cpp(728): warning C4101: 'dwThreadId': unreferenced local variable
   Server.vcxproj -> C:\Users\ricar\OneDrive - ISEC\ISEC\cadeiras\sistemasoperativos2\Arkanoid-SO2\tpArkanoid\Server\Debug\Server.exe
   0 File(s) copied

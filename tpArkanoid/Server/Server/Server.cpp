@@ -291,6 +291,7 @@ void initializeClientInfo() {
 	}
 }
 
+
 void printClientState() {
 	for (int i = 0; i < config.maxPlayers; i++)	{
 		_tprintf(TEXT("[%d] -> %d\n"), i, clientsInfo[i].state);
@@ -344,6 +345,40 @@ void updateGameData() {
 	if (!SetEvent(hGameDataEvent)) {
 		printf("SetEvent failed (%d)\n", GetLastError());
 	}
+}
+
+void setUpBricks1() {
+	int i = 0, aux = 0;
+	
+	while (i < 10) {
+		gameData.bricks[i].y = 30;
+		gameData.bricks[i].x = 200 + aux;
+		gameData.bricks[i].type = 1;
+		gameData.bricks[i].hp = 1;
+		aux += BRICK_SIZE_X;
+		i++;
+	}
+
+	aux = 0;
+	while (i < 20) {
+		gameData.bricks[i].y = 80;
+		gameData.bricks[i].x = 200 + aux;
+		gameData.bricks[i].type = 2;
+		gameData.bricks[i].hp = 2;
+		aux += BRICK_SIZE_X;
+		i++;
+	}
+
+	aux = 0;
+	while (i < 30) {
+		gameData.bricks[i].y = 130;
+		gameData.bricks[i].x = 200 + aux;
+		gameData.bricks[i].type = 1;
+		gameData.bricks[i].hp = 1;
+		aux += BRICK_SIZE_X;
+		i++;
+	}
+	updateGameData();
 }
 
 void sendMessage(Message content) {
@@ -510,6 +545,16 @@ BOOL isTouchingPlatform(int id) {
 	return FALSE;
 }
 
+BOOL isTouchingBrick(int id) {
+	for (int i = 0; i < 30; i++) {
+		if (gameData.balls[id].y == gameData.bricks[i].y + BRICK_SIZE_Y && gameData.balls[id].x + BALL_SIZE > gameData.bricks[i].x &&  gameData.balls[id].x < gameData.bricks[i].x + BRICK_SIZE_X && gameData.bricks[i].hp > 0) {
+			gameData.bricks[i].hp = 0;
+			return true;
+		}
+	}
+	return false;
+}
+
 DWORD WINAPI BallThread(LPVOID param) {
 	int id;
 	WaitForSingleObject(hMutexGameDataShare, INFINITE);
@@ -536,9 +581,11 @@ DWORD WINAPI BallThread(LPVOID param) {
 		x = x + xSpeed;
 		y = y + ySpeed;
 
+		
+
 		if (x <= 0 || (x+BALL_SIZE) >= GAME_WIDTH)
 			xSpeed *= -1;
-		if (y <= 0 || (y+BALL_SIZE) >= GAME_HEIGHT || isTouchingPlatform(0))
+		if (y <= 0 || (y+BALL_SIZE) >= GAME_HEIGHT || isTouchingPlatform(0) || isTouchingBrick(id))
 			if (yCounter >= 10) {
 				ySpeed *= -1;
 				yCounter = 0;
@@ -752,6 +799,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 	initializeLocalMemory();
 	initializeConfig();
 	initializeClientInfo();
+	setUpBricks1();
+
 	gameData.gameState = LOGIN;
 	gameData.nBalls = 0;
 	nClients = 0;

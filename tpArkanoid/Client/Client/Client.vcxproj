@@ -96,7 +96,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>DLL.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>DLL.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>..\..\DLL\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
@@ -179,12 +179,14 @@
     <ResourceCompile Include="Client.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\..\..\..\..\..\..\..\downloads\bitmap3.bmp" />
-    <Image Include="..\..\..\..\..\..\..\..\Downloads\cover.bmp" />
-    <Image Include="bitmap1.bmp" />
+    <None Include="resource.hm" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="resource.hm" />
+    <Image Include="bitmap1.bmp" />
+    <Image Include="bitmap2.bmp" />
+    <Image Include="bitmap3.bmp" />
+    <Image Include="bmp00001.bmp" />
+    <Image Include="cover.bmp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
